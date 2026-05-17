@@ -5,6 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spin!</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <meta property="og:title" content="Spin!">
+    <meta property="og:description" content="A mesmerizing, physically-based spin simulation with realistic audio">
+    <meta property="og:image" content="/og-image.png">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
 
     <style>
         body {
@@ -160,7 +166,7 @@
             </div>
             <div class="control-group" style="justify-content: flex-start; gap: 30px;">
                 <label for="soundToggle" style="flex: 0;">Sound</label>
-                <input type="checkbox" id="soundToggle" style="width: 20px; height: 20px; cursor: pointer;">
+                <input type="checkbox" id="soundToggle" style="width: 20px; height: 20px; cursor: pointer;" checked>
             </div>
             <button id="resetBtn">Reset Spin</button>
         </div>
@@ -588,62 +594,98 @@
     let noiseSrc = null;
     let noiseFilter = null;
     let oscGain = null;
+    let rattleFilter = null;
+    let rattleGain = null;
     let noiseGain = null;
     let masterGain = null;
 
-    soundToggle.addEventListener('change', (e) => {
-        if (e.target.checked) {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                
-                masterGain = audioCtx.createGain();
-                masterGain.gain.value = 0;
-                masterGain.connect(audioCtx.destination);
+    function initAudio() {
+        if (audioCtx) return; // Already initialized
 
-                // 1. Custom Harmonic Oscillator (Mix of 1-blade, 2-blade, etc.)
-                mainOsc = audioCtx.createOscillator();
-                const numHarmonics = 32;
-                const real = new Float32Array(numHarmonics);
-                const imag = new Float32Array(numHarmonics);
-                real[0] = 0; // DC offset
-                for (let i = 1; i < numHarmonics; i++) {
-                    // Mix decreasing amounts of harmonics.
-                    // This creates a rich, realistic motor/propeller tone.
-                    real[i] = 1.0 / Math.pow(i, 1.5); 
-                }
-                const wave = audioCtx.createPeriodicWave(real, imag);
-                mainOsc.setPeriodicWave(wave);
-                
-                oscGain = audioCtx.createGain();
-                oscGain.gain.value = 0.8;
-                mainOsc.connect(oscGain);
-                oscGain.connect(masterGain);
-                mainOsc.start();
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0;
+        masterGain.connect(audioCtx.destination);
 
-                // 2. Wind/Air Noise
-                const bufferSize = audioCtx.sampleRate * 2; // 2 seconds of noise
-                const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-                const output = noiseBuffer.getChannelData(0);
-                for (let i = 0; i < bufferSize; i++) {
-                    output[i] = Math.random() * 2 - 1;
-                }
-                noiseSrc = audioCtx.createBufferSource();
-                noiseSrc.buffer = noiseBuffer;
-                noiseSrc.loop = true;
+        // 1. Custom Harmonic Oscillator (Impulse Train for impacts)
+        mainOsc = audioCtx.createOscillator();
+        const numHarmonics = 64; // High harmonics for sharper mechanical impacts
+        const real = new Float32Array(numHarmonics);
+        const imag = new Float32Array(numHarmonics);
+        real[0] = 0; // DC offset
+        for (let n = 1; n < numHarmonics; n++) {
+            // Slower decay for sharper clicks
+            let decay = 1.0 / Math.pow(n, 0.85); 
+            
+            // Main heavy "con" hit at phase 0
+            let r1 = 1.0;
+            let i1 = 0.0;
+            
+            // Secondary loose bearing "da" hit at phase 0.35
+            let p2 = 0.35;
+            let r2 = 0.5 * Math.cos(2 * Math.PI * n * p2);
+            let i2 = 0.5 * Math.sin(2 * Math.PI * n * p2);
 
-                noiseFilter = audioCtx.createBiquadFilter();
-                noiseFilter.type = 'lowpass';
-                noiseFilter.frequency.value = 100;
-                noiseFilter.Q.value = 1.0;
+            // Quick tertiary "da" hit at phase 0.45
+            let p3 = 0.45;
+            let r3 = 0.3 * Math.cos(2 * Math.PI * n * p3);
+            let i3 = 0.3 * Math.sin(2 * Math.PI * n * p3);
 
-                noiseGain = audioCtx.createGain();
-                noiseGain.gain.value = 0.0;
+            real[n] = (r1 + r2 + r3) * decay;
+            imag[n] = (i1 + i2 + i3) * decay;
+        }
+        const wave = audioCtx.createPeriodicWave(real, imag);
+        mainOsc.setPeriodicWave(wave);
+        mainOsc.start();
+        
+        // Direct continuous hum path
+        oscGain = audioCtx.createGain();
+        oscGain.gain.value = 0.0;
+        mainOsc.connect(oscGain);
+        oscGain.connect(masterGain);
 
-                noiseSrc.connect(noiseFilter);
-                noiseFilter.connect(noiseGain);
-                noiseGain.connect(masterGain);
-                noiseSrc.start();
-            }
+        // Mechanical Rattle Resonance Path (Physically-based housing resonance)
+        rattleFilter = audioCtx.createBiquadFilter();
+        rattleFilter.type = 'bandpass';
+        rattleFilter.frequency.value = 250; // The hollow resonant pitch of the "con"
+        rattleFilter.Q.value = 10.0;        // High Q makes it ring out like physical metal/plastic
+
+        rattleGain = audioCtx.createGain();
+        rattleGain.gain.value = 0.0;
+        
+        mainOsc.connect(rattleFilter);
+        rattleFilter.connect(rattleGain);
+        rattleGain.connect(masterGain);
+
+        // 2. Wind/Air Noise
+        const bufferSize = audioCtx.sampleRate * 2; // 2 seconds of noise
+        const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+        }
+        noiseSrc = audioCtx.createBufferSource();
+        noiseSrc.buffer = noiseBuffer;
+        noiseSrc.loop = true;
+
+        noiseFilter = audioCtx.createBiquadFilter();
+        noiseFilter.type = 'lowpass';
+        noiseFilter.frequency.value = 100;
+        noiseFilter.Q.value = 1.0;
+
+        noiseGain = audioCtx.createGain();
+        noiseGain.gain.value = 0.0;
+
+        noiseSrc.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(masterGain);
+        noiseSrc.start();
+    }
+
+    function toggleAudio() {
+        if (soundToggle.checked) {
+            initAudio();
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
@@ -652,7 +694,23 @@
                 masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
             }
         }
-    });
+    }
+
+    soundToggle.addEventListener('change', toggleAudio);
+
+    // Handle browser autoplay policies by starting audio on first interaction
+    const startAudioOnInteraction = () => {
+        if (soundToggle.checked && !audioCtx) {
+            toggleAudio();
+        }
+        if (audioCtx) {
+            document.removeEventListener('pointerdown', startAudioOnInteraction);
+            document.removeEventListener('keydown', startAudioOnInteraction);
+        }
+    };
+
+    document.addEventListener('pointerdown', startAudioOnInteraction);
+    document.addEventListener('keydown', startAudioOnInteraction);
 
     function update() {
         setTimeout(update, 1000 / 60);
@@ -686,22 +744,30 @@
 
         if (audioCtx && soundToggle.checked) {
             // Fundamental frequency: 1 Hz = 60 RPM
-            // Custom waveform automatically generates all the 2-blade, 3-blade, etc. harmonics
-            let baseFreq = Math.max(rpm / 60, 0.1);
+            let baseFreq = Math.max(rpm / 60, 0.5);
             mainOsc.frequency.setTargetAtTime(baseFreq, audioCtx.currentTime, 0.1);
 
-            // Wind noise filter opens up as RPM increases (more high pitched whoosh)
+            // Wind noise filter opens up as RPM increases
             let filterFreq = Math.min(100 + rpm * 1.5, 10000);
             noiseFilter.frequency.setTargetAtTime(filterFreq, audioCtx.currentTime, 0.1);
 
-            // Mix: More air noise at high RPMs
+            // Physically-based mixing:
+            // Rattle is prominent at low/medium speeds, smooths out into a continuous hum at high speeds
+            let rVol = Math.max(0, 1.0 - (rpm / 4000)) * 1.5; 
+            
+            // Direct drone hum builds up as the rattle fades
+            let oscVol = Math.min(rpm / 2000, 1.0) * 0.5;
+            
+            // Air resistance whoosh builds up continuously
             let noiseVol = Math.min(rpm / 3000, 1.0) * 0.6;
-            let oscVol = 0.8;
-            noiseGain.gain.setTargetAtTime(noiseVol, audioCtx.currentTime, 0.1);
+            
+            rattleGain.gain.setTargetAtTime(rVol, audioCtx.currentTime, 0.1);
             oscGain.gain.setTargetAtTime(oscVol, audioCtx.currentTime, 0.1);
+            noiseGain.gain.setTargetAtTime(noiseVol, audioCtx.currentTime, 0.1);
 
             // Master Volume increases with RPM
-            let targetGain = Math.min(rpm / 1500, 1.0) * 0.3; 
+            let targetGain = Math.min(rpm / 1000, 1.0) * 0.3; 
+            if (rpm < 5) targetGain = 0; // Silence at complete stop
             masterGain.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.1);
         }
 
