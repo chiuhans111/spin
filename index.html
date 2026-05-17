@@ -16,7 +16,6 @@
         body {
             font-family: system-ui, -apple-system, sans-serif;
             margin: 0;
-            padding: 10px;
             transition: background-color 0.5s ease;
             display: flex;
             justify-content: center;
@@ -31,8 +30,8 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 20px;
-            padding: 20px;
+            gap: 5px;
+            padding: 10px 20px;
         }
 
         canvas {
@@ -75,7 +74,7 @@
         .controls {
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 10px;
             width: 100%;
             max-width: 400px;
             background: rgba(0, 0, 0, 0.2);
@@ -141,7 +140,7 @@
             <canvas id="canvas"></canvas>
         </div>
         <div>
-            <p id="info">Loading...</p>
+            <span id="info">Loading...</span>
         </div>
         <div class="controls">
             <div class="control-group">
@@ -166,7 +165,7 @@
             </div>
             <div class="control-group" style="justify-content: flex-start; gap: 30px;">
                 <label for="soundToggle" style="flex: 0;">Sound</label>
-                <input type="checkbox" id="soundToggle" style="width: 20px; height: 20px; cursor: pointer;" checked>
+                <input type="checkbox" id="soundToggle" style="width: 20px; height: 20px; cursor: pointer;" >
             </div>
             <button id="resetBtn">Reset Spin</button>
         </div>
@@ -217,10 +216,12 @@
     #define PI 3.1415926536
     precision mediump float;
     varying vec2 v_position;
-    uniform vec2 u_texture_size;
     uniform sampler2D u_prefix0;
     uniform sampler2D u_prefix1;
     uniform sampler2D u_prefix2;
+    uniform sampler2D u_texture;
+    uniform vec2 u_buffer_size;
+    uniform vec2 u_texture_size;
     uniform vec2 u_canvas_size;
 
     uniform float u_angle;
@@ -278,6 +279,8 @@
         return accum;
     }
 
+    #define SAMPLES 4
+
     void main(void) {
         vec2 uv = (v_position - 0.5) / max(u_canvas_size.x, u_canvas_size.y) * u_canvas_size;
         vec2 p = vec2(
@@ -285,11 +288,30 @@
             length(uv) * sqrt(2.0)
         );
 
+        // sampling without shutter when shutter is small.
+
+        vec4 c0 = vec4(0);
+        for(int i=0;i<SAMPLES;i++){
+            float x = p.x + float(i)/float(SAMPLES) * u_shutter;
+            vec2 polar = vec2(
+                cos(x * 2.0 * PI),
+                sin(x * 2.0 * PI)
+            ) * (p.y * 0.5) * length(u_texture_size) / u_texture_size + 0.5;
+            c0 += texture2D(u_texture, polar) / float(SAMPLES);
+        }
+
+        // Debug: Red is blended with sampling.
+        // c0.r=1.0;
+        
+        
         vec4 c = integral(p, max(u_shutter, 1.5/u_texture_size.x));
 
         c.r = pow(c.r, 1.0/2.2);
         c.g = pow(c.g, 1.0/2.2);
         c.b = pow(c.b, 1.0/2.2);
+
+        c = mix(c0, c, smoothstep(0.0, 1.0, u_texture_size.x * u_shutter / 5.0 - 1.0));
+
         gl_FragColor = vec4(c);
 
     }
@@ -376,7 +398,7 @@
     async function setupTargetTexture() {
         await imageReady(targetImg)
         const texture = imageToTexture(targetImg)
-        const imageScale = 600 / Math.max(targetImg.naturalWidth, targetImg.naturalHeight)
+        const imageScale = 900 / Math.max(targetImg.naturalWidth, targetImg.naturalHeight)
         canvas.width = Math.round(targetImg.naturalWidth * imageScale)
         canvas.height = Math.round(targetImg.naturalHeight * imageScale)
         return texture
@@ -490,10 +512,10 @@
         for (let x = 0; x < bufferWidth; x++) {
             // Integrate one slice to get the sum.
             let sum = 0;
-            for (let y = 0; y < bufferHeight; y++) {
+            for (let y = 0; y < bufferHeight * 0.707; y++) {
                 const i = (x + y * bufferWidth) * 4;
                 const luma = rawOutputData[i] + rawOutputData[i + 1] + rawOutputData[i + 2];
-                sum += luma * luma * Math.pow(y / bufferHeight, 2.0); // Weight by radius squared
+                sum += luma * (y / bufferHeight); // Weight by radius
             }
             densityProfile[x] = sum;
             sumD += sum;
@@ -549,9 +571,12 @@
         for (let i = 0; i < 3; i++) {
             bindTexture(program2, "u_prefix" + i, prefixTextures[i], i)
         }
+        bindTexture(program2, "u_texture", texture, 3)
 
         // Update uniform.
         gl.uniform2f(gl.getUniformLocation(program2, "u_texture_size"),
+            targetImg.naturalWidth, targetImg.naturalHeight)
+        gl.uniform2f(gl.getUniformLocation(program2, "u_buffer_size"),
             bufferWidth, bufferHeight)
         gl.uniform2f(gl.getUniformLocation(program2, "u_canvas_size"),
             canvas.width, canvas.height)
@@ -630,16 +655,45 @@
         const buffer = audioCtx.createBuffer(1, globalWaveData.length, audioCtx.sampleRate);
         buffer.copyToChannel(globalWaveData, 0);
 
+        const now = audioCtx.currentTime;
+
         if (mainOsc) {
-            mainOsc.stop();
-            mainOsc.disconnect();
+            const oldOsc = mainOsc;
+            const oldFade = mainOsc.fadeNode;
+            if (oldFade) {
+                oldFade.gain.cancelScheduledValues(now);
+                oldFade.gain.setValueAtTime(oldFade.gain.value, now);
+                oldFade.gain.linearRampToValueAtTime(0, now + 0.05);
+                setTimeout(() => {
+                    oldOsc.stop();
+                    oldOsc.disconnect();
+                    oldFade.disconnect();
+                }, 100);
+            } else {
+                oldOsc.stop();
+                oldOsc.disconnect();
+            }
         }
+
         mainOsc = audioCtx.createBufferSource();
         mainOsc.buffer = buffer;
         mainOsc.loop = true;
-        mainOsc.connect(oscGain);
-        mainOsc.connect(rattleFilter);
-        mainOsc.start();
+
+        const fadeNode = audioCtx.createGain();
+        fadeNode.gain.setValueAtTime(0, now);
+        fadeNode.gain.linearRampToValueAtTime(1, now + 0.05);
+        mainOsc.fadeNode = fadeNode;
+
+        mainOsc.connect(fadeNode);
+        fadeNode.connect(oscGain);
+        fadeNode.connect(rattleFilter);
+
+        let rpm = Math.abs(deltaAngle * 60);
+        let baseFreq = Math.max(rpm / 60, 0.5);
+        let rate = baseFreq * (globalWaveData.length / audioCtx.sampleRate);
+        mainOsc.playbackRate.value = rate;
+
+        mainOsc.start(now);
     }
 
     function initAudio() {
@@ -659,7 +713,7 @@
         // Mechanical Rattle Resonance Path
         rattleFilter = audioCtx.createBiquadFilter();
         rattleFilter.type = 'bandpass';
-        rattleFilter.frequency.value = 1000;
+        rattleFilter.frequency.value = 250;
         rattleFilter.Q.value = 10.0;
 
         rattleGain = audioCtx.createGain();
@@ -760,16 +814,16 @@
             let filterFreq = Math.min(100 + rpm * 1.5, 10000);
             noiseFilter.frequency.setTargetAtTime(filterFreq, audioCtx.currentTime, 0.1);
 
-            let rVol = Math.max(0, 1.0 - (rpm / 1000)) * 0.2;
-            let oscVol = Math.min(rpm / 100, 1.0) * 0.7;
-            let noiseVol = Math.min(rpm / 500, 1.0) * 0.3;
+            let rVol = Math.max(0, 1.0 - (rpm / 200)) * 0.4;
+            let oscVol = Math.min(rpm / 200, 1.0) * 0.5;
+            let noiseVol = Math.min(rpm / 1000, 1.0) * 0.3;
 
             rattleGain.gain.setTargetAtTime(rVol, audioCtx.currentTime, 0.1);
             oscGain.gain.setTargetAtTime(oscVol, audioCtx.currentTime, 0.1);
             noiseGain.gain.setTargetAtTime(noiseVol, audioCtx.currentTime, 0.1);
 
             let targetGain = Math.min(rpm / 1000, 1.0) * 0.3;
-            if (rpm < 2) targetGain = 0;
+            if (rpm < 1) targetGain = 0;
             masterGain.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.1);
         }
 
