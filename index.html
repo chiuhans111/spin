@@ -19,7 +19,8 @@
             transition: background-color 0.5s ease;
             display: flex;
             justify-content: center;
-            height: 100dvh; /* dynamic viewport handles mobile address bars perfectly */
+            height: 100dvh;
+            /* dynamic viewport handles mobile address bars perfectly */
             width: 100vw;
             position: fixed;
             top: 0;
@@ -61,8 +62,25 @@
             object-fit: contain;
         }
 
+        /* FPS Selector */
+        #fpsSelect {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            padding: 4px;
+            border-radius: 4px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+
+        #fpsSelect option {
+            background-color: #222;
+            color: white;
+        }
+
         /* Buttons */
-        .custom-file-upload, #resetBtn {
+        .custom-file-upload,
+        #resetBtn {
             width: 100%;
             padding: 0.8em;
             border: none;
@@ -78,7 +96,8 @@
             display: inline-block;
         }
 
-        .custom-file-upload:hover, #resetBtn:hover {
+        .custom-file-upload:hover,
+        #resetBtn:hover {
             background-color: rgba(255, 255, 255, 0.2);
         }
 
@@ -97,24 +116,29 @@
             max-height: 100%;
         }
 
-        @media (max-width: 800px) {
+        @media (max-width: 1200px) {
             .container {
                 flex-direction: column;
                 padding: 10px;
                 gap: 5px;
             }
+
             .canvas-container {
                 width: 100%;
-                flex: 1 1 0%; /* forces it to shrink infinitely if needed */
+                flex: 1 1 0%;
+                /* forces it to shrink infinitely if needed */
             }
+
             .controls {
                 flex: 0 0 auto;
                 padding: 10px;
                 gap: 5px;
             }
+
             .control-group {
                 gap: 10px;
             }
+
             #resetBtn {
                 margin-top: 0;
             }
@@ -168,8 +192,16 @@
             <div class="control-group" style="justify-content: space-between;">
                 <span id="info">Loading...</span>
                 <div style="display: flex; align-items: center; gap: 10px;">
+                    <select id="fpsSelect">
+                        <option value="unlimited">Max FPS</option>
+                        <option value="60">60 FPS</option>
+                        <option value="30">30 FPS</option>
+                        <option value="29.97">29.97 FPS</option>
+                        <option value="24">24 FPS</option>
+                    </select>
                     <label for="soundToggle" style="margin: 0; cursor: pointer;">Sound</label>
-                    <input type="checkbox" id="soundToggle" style="width: 20px; height: 20px; cursor: pointer; margin: 0;">
+                    <input type="checkbox" id="soundToggle"
+                           style="width: 20px; height: 20px; cursor: pointer; margin: 0;">
                 </div>
             </div>
             <div class="control-group">
@@ -382,7 +414,7 @@
         
         
         vec4 c = integral(p, max(u_shutter, 1.5/u_buffer_size.x));
-        c = mix(c0, c, smoothstep(0.0, 1.0, u_buffer_size.x * u_shutter / 5.0 - 1.0));
+        c = mix(c0, c, smoothstep(0.0, 1.0, u_buffer_size.x * u_shutter / 3.0 - 1.0));
 
         c = linear2srgb(c);
 
@@ -692,6 +724,7 @@
     const shutterMultVal = document.getElementById('shutterMult-val')
     const rollingMultInput = document.getElementById('rollingMult')
     const rollingMultVal = document.getElementById('rollingMult-val')
+    const fpsSelect = document.getElementById('fpsSelect')
     const soundToggle = document.getElementById('soundToggle')
     const resetBtn = document.getElementById('resetBtn')
     const info = document.getElementById('info')
@@ -870,12 +903,20 @@
     // === 5. ANIMATION LOOP
     // ==========================================
     function update() {
-        setTimeout(update, 1000 / 60);
-        // requestAnimationFrame(update)
-        let time = Date.now()
-        let deltaTime = (time - prevTime) / 1000
-        prevTime = time
-        if (!deltaTime) return
+        requestAnimationFrame(update);
+        let time = Date.now();
+        let deltaTime = (time - prevTime) / 1000;
+
+        let targetFPS = fpsSelect.value;
+        if (targetFPS !== "unlimited") {
+            let targetFrameTime = 1 / parseFloat(targetFPS);
+            if (deltaTime < targetFrameTime) {
+                return;
+            }
+        }
+
+        prevTime = time;
+        if (!deltaTime) return;
 
 
         // Set uniform.
@@ -883,18 +924,17 @@
         let maxrps = paramMaxrpm / 60
 
         if (deltaAngle > maxrps - 0.01) {
-            deltaAngle += (maxrps - deltaAngle) * 0.6 * deltaTime
+            deltaAngle += (maxrps - deltaAngle) * Math.min(1.0, 2.0 * deltaTime)
         }
         else if (deltaAngle < -maxrps + 0.01) {
-            deltaAngle += (-maxrps - deltaAngle) * 0.6 * deltaTime
+            deltaAngle += (-maxrps - deltaAngle) * Math.min(1.0, 2.0 * deltaTime)
         } else {
             deltaAngle += paramAccel * deltaTime
         }
 
 
-        let correctionAngle = (angle + 0.5) % 1 - 0.5
-
-        deltaAngle += -correctionAngle * 0.1 * deltaTime
+        // let correctionAngle = (angle + 0.5) % 1 - 0.5
+        // deltaAngle += -correctionAngle  * deltaTime
 
         let rpm = Math.abs(deltaAngle * 60);
         info.textContent = "RPM: " + (deltaAngle * 60).toFixed(0).padStart(5, " ")
