@@ -221,7 +221,7 @@
             </div>
             <div class="control-group">
                 <label for="maxrpm">Max RPM</label>
-                <input type="range" id="maxrpm" min="0" max="21.5443469003" step="0.0001" value="10">
+                <input type="range" id="maxrpm" min="0" max="100" step="0.0001" value="31.6227766017">
                 <span id="maxrpm-val">1000</span>
             </div>
 
@@ -764,7 +764,7 @@
     let isStarted = false
     let isMuted = false
     let paramAccel = parseFloat(accelInput.value)
-    let paramMaxrpm = Math.pow(maxrpmInput.value, 3)
+    let paramMaxrpm = Math.pow(maxrpmInput.value, 2)
     let paramShutterMult = parseFloat(shutterMultInput.value)
     let paramRollingMult = parseFloat(rollingMultInput.value)
 
@@ -772,7 +772,7 @@
         paramAccel = parseFloat(accelInput.value)
         accelVal.textContent = paramAccel.toFixed(2)
 
-        paramMaxrpm = Math.pow(maxrpmInput.value, 3)
+        paramMaxrpm = Math.pow(maxrpmInput.value, 2)
         maxrpmVal.textContent = paramMaxrpm.toFixed(0)
 
         paramShutterMult = parseFloat(shutterMultInput.value)
@@ -800,6 +800,10 @@
             initAudio();
             if (audioCtx && audioCtx.state === 'suspended') {
                 audioCtx.resume();
+            }
+        } else {
+            if (audioCtx && audioCtx.state === 'running') {
+                audioCtx.suspend();
             }
         }
     });
@@ -973,9 +977,9 @@
             let filterFreq = Math.min(100 + rpm * 1.5, 10000);
             noiseFilter.frequency.setTargetAtTime(filterFreq, audioCtx.currentTime, 0.1);
 
-            let rVol = Math.max(0, 1.0 - (rpm / 1000)) * 10.0;
+            let rVol = Math.max(paramRollingMult * 0.2, 1.0 - (rpm / 1000)) * 10.0;
             let oscVol = Math.min(rpm / 1000, 1.0) * 0.6;
-            let noiseVol = Math.min(rpm / 1000, 1.0) * 0.2;
+            let noiseVol = Math.min(rpm / 1000, 1.0) * (1.1 - paramShutterMult) * 0.05;
 
             rattleGain.gain.setTargetAtTime(rVol, audioCtx.currentTime, 0.1);
             oscGain.gain.setTargetAtTime(oscVol, audioCtx.currentTime, 0.1);
@@ -988,8 +992,8 @@
 
 
         // Render.
-        let shutter = deltaAngle * deltaTime * paramShutterMult
-        let rolling = -deltaAngle * deltaTime * paramRollingMult
+        let shutter = isStarted ? deltaAngle * deltaTime * paramShutterMult : 0
+        let rolling = isStarted ? -deltaAngle * deltaTime * paramRollingMult : 0
         if (shutter > 0) {
             gl.uniform1f(u_angle, angle)
         } else {
