@@ -503,6 +503,20 @@
         }
     })
 
+    // Handle clipboard paste.
+    window.addEventListener('paste', function (e) {
+        const items = (e.clipboardData || window.clipboardData).items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const blob = items[i].getAsFile();
+                targetImg = fileToImage(blob);
+                presetSelect.value = 'custom';
+                main();
+                break;
+            }
+        }
+    });
+
     // ==========================================
     // === 2. WEBGL SETUP & UTILS
     // ==========================================
