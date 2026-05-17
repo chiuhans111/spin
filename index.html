@@ -12,7 +12,7 @@
         gtag('config', 'G-Z2HQTBGMP2');
     </script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Spin!</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <meta property="og:title" content="Spin!">
@@ -150,6 +150,7 @@
 
             .controls {
                 width: 100%;
+                min-width: 0;
                 flex: 0 0 auto;
                 gap: 5px;
                 padding: 5px;
@@ -277,7 +278,11 @@
 </script>
 <script id="fragmentShaderToPolar" type="x-shader/x-fragment">
     #define PI 3.1415926536
+    #ifdef GL_FRAGMENT_PRECISION_HIGH
+    precision highp float;
+    #else
     precision mediump float;
+    #endif
     varying vec2 v_position;
     uniform vec2 u_texture_size;
     uniform vec2 u_canvas_size;
@@ -319,7 +324,11 @@
 </script>
 <script id="fragmentShaderRender" type="x-shader/x-fragment">
     #define PI 3.1415926536
+    #ifdef GL_FRAGMENT_PRECISION_HIGH
+    precision highp float;
+    #else
     precision mediump float;
+    #endif
     varying vec2 v_position;
     uniform sampler2D u_prefix0;
     uniform sampler2D u_prefix1;
