@@ -7,37 +7,158 @@
     <title>Spin!</title>
 
     <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 10px;
+            transition: background-color 0.5s ease;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            color: #fff;
+            background-color: #222;
+        }
+
         .container {
             margin: auto;
-            max-width: 760px;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .upload-section {
+            width: 100%;
+            display: flex;
+            justify-content: center;
         }
 
         /* File Selector */
+        #file {
+            max-width: 300px;
+            color: rgba(255, 255, 255, 0.9);
+            background-color: rgba(0, 0, 0, 0.2);
+            font-family: inherit;
+            padding-right: 5px;
+        }
+
         #file::file-selector-button {
-            padding: 0.6em 1.2em;
+            padding: 0.8em 1.6em;
             border: none;
-            background-color: #000000;
+            background-color: rgba(0, 0, 0, 0.4);
             color: white;
             cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            margin-right: 16px;
         }
 
         #file::file-selector-button:hover {
-            background-color: rgb(61, 61, 61);
+            background-color: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 100%;
+            max-width: 400px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .control-group label {
+            flex: 1.2;
+            font-size: 0.9em;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .control-group input[type="range"] {
+            flex: 2;
+            accent-color: #fff;
+        }
+
+        .control-group span {
+            min-width: 44px;
+            text-align: right;
+            font-family: monospace;
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        #resetBtn {
+            width: 100%;
+            padding: 0.8em;
+            border: none;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            margin-top: 8px;
+        }
+
+        #resetBtn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        #info {
+            font-family: monospace;
+            white-space: pre;
         }
     </style>
 </head>
 
 <body>
-
-
-
     <div class="container">
-
-        <div>
+        <div class="upload-section">
             <input type="file" id="file" accept="image/png, image/jpeg, image/webp" />
         </div>
         <div>
             <canvas id="canvas"></canvas>
+        </div>
+        <div>
+            <p id="info">Loading...</p>
+        </div>
+        <div class="controls">
+            <div class="control-group">
+                <label for="accel">Acceleration</label>
+                <input type="range" id="accel" min="-5" max="5" step="0.1" value="2">
+                <span id="accel-val">2</span>
+            </div>
+            <div class="control-group">
+                <label for="accel">Max RPM</label>
+                <input type="range" id="maxrpm" min="0" max="5000" step="0.01" value="1000">
+                <span id="maxrpm-val">1000</span>
+            </div>
+            <div class="control-group">
+                <label for="shutterMult">Shutter</label>
+                <input type="range" id="shutterMult" min="0" max="1" step="0.05" value="0.3">
+                <span id="shutterMult-val">0.30</span>
+            </div>
+            <div class="control-group">
+                <label for="rollingMult">Rolling</label>
+                <input type="range" id="rollingMult" min="0" max="2" step="0.1" value="1.0">
+                <span id="rollingMult-val">1.0</span>
+            </div>
+            <button id="resetBtn">Reset Spin</button>
         </div>
     </div>
 </body>
@@ -63,7 +184,7 @@
     uniform vec2 u_canvas_size;
     uniform sampler2D u_texture;
 
-    #define SAMPLES 8
+    #define SAMPLES 4
 
     void main(void) {
         vec4 c = vec4(0);
@@ -72,13 +193,13 @@
             vec2 polar = vec2(
                 cos(x * 2.0 * PI),
                 sin(x * 2.0 * PI)
-            ) * v_position.y * length(u_texture_size) / u_texture_size + 0.5;
+            ) * (v_position.y * 0.5) * length(u_texture_size) / u_texture_size + 0.5;
             c += texture2D(u_texture, polar) / float(SAMPLES);
         }
 
-        c.r = pow(c.r, 2.4);
-        c.g = pow(c.g, 2.4);
-        c.b = pow(c.b, 2.4);
+        c.r = pow(c.r, 2.2);
+        c.g = pow(c.g, 2.2);
+        c.b = pow(c.b, 2.2);
         gl_FragColor = c;
     }
 </script>
@@ -151,14 +272,14 @@
         vec2 uv = (v_position - 0.5) / max(u_canvas_size.x, u_canvas_size.y) * u_canvas_size;
         vec2 p = vec2(
             fract(atan(uv.y, uv.x)/PI*0.5 + u_angle + u_rolling * uv.y),
-            length(uv)/sqrt(2.0)
+            length(uv) * sqrt(2.0)
         );
 
-        vec4 c = integral(p, max(u_shutter, 1.0/u_texture_size.x));
+        vec4 c = integral(p, max(u_shutter, 1.5/u_texture_size.x));
 
-        c.r = pow(c.r, 1.0/2.4);
-        c.g = pow(c.g, 1.0/2.4);
-        c.b = pow(c.b, 1.0/2.4);
+        c.r = pow(c.r, 1.0/2.2);
+        c.g = pow(c.g, 1.0/2.2);
+        c.b = pow(c.b, 1.0/2.2);
         gl_FragColor = vec4(c);
 
     }
@@ -345,10 +466,10 @@
             }
 
             if (y == bufferHeight - 1) {
-                const r = Math.round(Math.pow(prefixSum[0] / bufferHeight / 255, 1 / 2.4) * 255)
-                const g = Math.round(Math.pow(prefixSum[1] / bufferHeight / 255, 1 / 2.4) * 255)
-                const b = Math.round(Math.pow(prefixSum[2] / bufferHeight / 255, 1 / 2.4) * 255)
-                const a = prefixSum[3] / bufferHeight / 255
+                const r = Math.round(Math.pow(prefixSum[0] / bufferWidth / 255, 1 / 2.2) * 255)
+                const g = Math.round(Math.pow(prefixSum[1] / bufferWidth / 255, 1 / 2.2) * 255)
+                const b = Math.round(Math.pow(prefixSum[2] / bufferWidth / 255, 1 / 2.2) * 255)
+                const a = prefixSum[3] / bufferWidth / 255
                 document.body.style.backgroundColor = "rgba(" + r + "," + g + "," + b + "," + a + ")"
             }
         }
@@ -414,6 +535,48 @@
 
     let prevTime = NaN
 
+    // Parameter Elements
+    const accelInput = document.getElementById('accel')
+    const accelVal = document.getElementById('accel-val')
+    const maxrpmInput = document.getElementById('maxrpm')
+    const maxrpmVal = document.getElementById('maxrpm-val')
+    const shutterMultInput = document.getElementById('shutterMult')
+    const shutterMultVal = document.getElementById('shutterMult-val')
+    const rollingMultInput = document.getElementById('rollingMult')
+    const rollingMultVal = document.getElementById('rollingMult-val')
+    const resetBtn = document.getElementById('resetBtn')
+    const info = document.getElementById('info')
+
+    // Parameters state
+    let paramAccel = parseFloat(accelInput.value)
+    let paramMaxrpm = parseFloat(maxrpmInput.value)
+    let paramShutterMult = parseFloat(shutterMultInput.value)
+    let paramRollingMult = parseFloat(rollingMultInput.value)
+
+    function updateParams() {
+        paramAccel = parseFloat(accelInput.value)
+        accelVal.textContent = paramAccel.toFixed(2)
+
+        paramMaxrpm = parseFloat(maxrpmInput.value)
+        maxrpmVal.textContent = paramMaxrpm.toFixed(0)
+
+        paramShutterMult = parseFloat(shutterMultInput.value)
+        shutterMultVal.textContent = paramShutterMult.toFixed(2)
+
+        paramRollingMult = parseFloat(rollingMultInput.value)
+        rollingMultVal.textContent = paramRollingMult.toFixed(1)
+    }
+
+    accelInput.addEventListener('input', updateParams)
+    maxrpmInput.addEventListener('input', updateParams)
+    shutterMultInput.addEventListener('input', updateParams)
+    rollingMultInput.addEventListener('input', updateParams)
+
+    resetBtn.addEventListener('click', () => {
+        angle = 0
+        deltaAngle = 0.0
+    })
+
     function update() {
         setTimeout(update, 1000 / 60);
         // requestAnimationFrame(update)
@@ -424,15 +587,34 @@
 
 
         // Set uniform.
-        deltaAngle += 0.05 * deltaTime
 
-        angle += deltaAngle
+        let maxrps = paramMaxrpm / 60
 
-        let shutter = deltaAngle * 0.3
+        if (deltaAngle > maxrps - 0.01) {
+            deltaAngle += (maxrps - deltaAngle) * 0.6 * deltaTime
+        }
+        else if (deltaAngle < -maxrps + 0.01) {
+            deltaAngle += (-maxrps - deltaAngle) * 0.6 * deltaTime
+        } else {
+            deltaAngle += paramAccel * deltaTime
+        }
+
+
+        let correctionAngle = (angle + 0.5) % 1 - 0.5
+
+        deltaAngle += -correctionAngle * 0.1 * deltaTime
+
+        info.textContent = "RPM: " + (deltaAngle * 60).toFixed(0).padStart(5, " ")
+
+
+        angle += deltaAngle * deltaTime
+
+        let shutter = deltaAngle * deltaTime * paramShutterMult
+        let rolling = -deltaAngle * deltaTime * paramRollingMult
 
         gl.uniform1f(u_angle, angle)
         gl.uniform1f(u_shutter, Math.abs(shutter))
-        gl.uniform1f(u_rolling, -deltaAngle)
+        gl.uniform1f(u_rolling, rolling)
 
         // Render.
         gl.clearColor(0.0, 0.0, 0.0, 0.0)
