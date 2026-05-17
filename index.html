@@ -16,16 +16,11 @@
         body {
             font-family: system-ui, -apple-system, sans-serif;
             margin: 0;
-            transition: background-color 0.5s ease;
-            display: flex;
-            justify-content: center;
             height: 100dvh;
-            /* dynamic viewport handles mobile address bars perfectly */
             width: 100vw;
             position: fixed;
             top: 0;
             left: 0;
-            overflow: hidden;
             color: #fff;
             background-color: #222;
         }
@@ -69,26 +64,29 @@
         .custom-file-upload,
         select,
         button {
-            min-width: 50px;
+            min-width: 40px;
             height: 35px;
-            padding: 5px;
             border: none;
-            background-color: rgba(255, 255, 255, 0.1);
+            background: rgb(29, 29, 29);
             color: white;
             cursor: pointer;
             font-weight: 600;
-            font-family: inherit;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 1rem;
-            transition: all 0.2s ease;
             text-align: center;
             box-sizing: border-box;
             display: inline-block;
+            margin: 0;
+            line-height: 1;
+            padding: 10px 5px;
+            justify-content: center;
+            align-items: center;
         }
 
         .custom-file-upload:hover,
         select:hover,
         button:hover {
-            background-color: rgba(255, 255, 255, 0.2);
+            background-color: rgba(66, 66, 66);
         }
 
         select option {
@@ -96,44 +94,32 @@
             color: white;
         }
 
-        button {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-family: Arial, Helvetica, sans-serif;
-            cursor: pointer;
-            min-width: 50px;
-            height: 35px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
-            transition: all 0.2s ease;
-            margin: 0;
-            line-height: 1;
-            padding: 10px 5px;
-        }
 
 
         #playBtn {
-            background-color: green;
+            background-color: rgb(231, 231, 231);
+            color: black;
         }
 
-        button:hover {
-            background-color: rgba(255, 255, 255, 0.2);
+        #muteBtn {
+            filter: grayscale(1);
+        }
+
+
+        #playBtn:hover {
+            background-color: rgb(255, 255, 255);
         }
 
         .controls {
             border-radius: 4px;
-            flex: 0 0 350px;
-            width: 100%;
-            max-width: 400px;
+            flex: 0 0 400px;
+            min-width: 400px;
+            max-width: 600px;
             display: flex;
             flex-direction: column;
             gap: 10px;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
             box-sizing: border-box;
             overflow-y: auto;
             max-height: 100%;
@@ -142,20 +128,23 @@
         @media (max-width: 1200px) {
             .container {
                 flex-direction: column;
-                padding: 10px;
+                padding: 5px;
                 gap: 5px;
             }
 
             .canvas-container {
                 width: 100%;
+                min-height: 300px;
                 flex: 1 1 0%;
                 /* forces it to shrink infinitely if needed */
             }
 
             .controls {
+                width: 100%;
                 flex: 0 0 auto;
-                padding: 10px;
                 gap: 5px;
+                padding: 5px;
+                margin: 0;
             }
 
             .control-group {
@@ -212,6 +201,7 @@
                     <button id="resetBtn" class="icon-btn" title="Reset Spin">⟲</button>
                     <button id="muteBtn" class="icon-btn" title="Mute/Unmute">🔊</button>
                 </div>
+                <span id="info" style="min-width: 70px; text-align: left;">RPM: 0</span>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <select id="fpsSelect">
                         <option value="unlimited">Max FPS</option>
@@ -222,17 +212,16 @@
                     </select>
                 </div>
             </div>
-            <span id="info" style="min-width: 70px; text-align: left;">RPM: 0</span>
 
 
             <div class="control-group">
                 <label for="accel">Acceleration</label>
-                <input type="range" id="accel" min="-5" max="5" step="0.1" value="3">
+                <input type="range" id="accel" min="-10" max="10" step="0.1" value="3">
                 <span id="accel-val">3</span>
             </div>
             <div class="control-group">
                 <label for="maxrpm">Max RPM</label>
-                <input type="range" id="maxrpm" min="0" max="100" step="0.1" value="58.48">
+                <input type="range" id="maxrpm" min="0" max="21.5443469003" step="0.0001" value="10">
                 <span id="maxrpm-val">1000</span>
             </div>
 
@@ -775,7 +764,7 @@
     let isStarted = false
     let isMuted = false
     let paramAccel = parseFloat(accelInput.value)
-    let paramMaxrpm = Math.pow(parseFloat(maxrpmInput.value) / 100, 3) * 5000
+    let paramMaxrpm = Math.pow(maxrpmInput.value, 3)
     let paramShutterMult = parseFloat(shutterMultInput.value)
     let paramRollingMult = parseFloat(rollingMultInput.value)
 
@@ -783,7 +772,7 @@
         paramAccel = parseFloat(accelInput.value)
         accelVal.textContent = paramAccel.toFixed(2)
 
-        paramMaxrpm = Math.pow(parseFloat(maxrpmInput.value) / 100, 3) * 5000
+        paramMaxrpm = Math.pow(maxrpmInput.value, 3)
         maxrpmVal.textContent = paramMaxrpm.toFixed(0)
 
         paramShutterMult = parseFloat(shutterMultInput.value)
@@ -958,24 +947,23 @@
         let maxrps = paramMaxrpm / 60
 
         if (isStarted) {
-            if (deltaAngle > maxrps - 0.01) {
+            if (paramAccel > 0 && deltaAngle > maxrps - 0.01) {
                 deltaAngle += (maxrps - deltaAngle) * Math.min(1.0, 2.0 * deltaTime)
             }
-            else if (deltaAngle < -maxrps + 0.01) {
+            else if (paramAccel < 0 && deltaAngle < -maxrps + 0.01) {
                 deltaAngle += (-maxrps - deltaAngle) * Math.min(1.0, 2.0 * deltaTime)
             } else {
                 deltaAngle += paramAccel * deltaTime
+
             }
             angle += deltaAngle * deltaTime
-
-
         }
 
         // let correctionAngle = (angle + 0.5) % 1 - 0.5
         // deltaAngle += -correctionAngle  * deltaTime
 
         let rpm = Math.abs(deltaAngle * 60);
-        info.textContent = "RPM: " + (deltaAngle * 60).toFixed(0).padStart(5, " ")
+        info.textContent = "RPM: " + rpm.toFixed(0).padStart(5, " ")
 
         if (audioCtx && mainOsc) {
             let baseFreq = Math.max(rpm / 60, 0.5);
@@ -985,9 +973,9 @@
             let filterFreq = Math.min(100 + rpm * 1.5, 10000);
             noiseFilter.frequency.setTargetAtTime(filterFreq, audioCtx.currentTime, 0.1);
 
-            let rVol = Math.max(0, 1.0 - (rpm / 200)) * 0.2;
-            let oscVol = Math.min(rpm / 200, 1.0) * 0.6;
-            let noiseVol = Math.min(rpm / 1000, 1.0) * 0.1;
+            let rVol = Math.max(0, 1.0 - (rpm / 1000)) * 10.0;
+            let oscVol = Math.min(rpm / 1000, 1.0) * 0.6;
+            let noiseVol = Math.min(rpm / 1000, 1.0) * 0.2;
 
             rattleGain.gain.setTargetAtTime(rVol, audioCtx.currentTime, 0.1);
             oscGain.gain.setTargetAtTime(oscVol, audioCtx.currentTime, 0.1);
@@ -1002,8 +990,11 @@
         // Render.
         let shutter = deltaAngle * deltaTime * paramShutterMult
         let rolling = -deltaAngle * deltaTime * paramRollingMult
-
-        gl.uniform1f(u_angle, angle)
+        if (shutter > 0) {
+            gl.uniform1f(u_angle, angle)
+        } else {
+            gl.uniform1f(u_angle, angle - shutter)
+        }
         gl.uniform1f(u_shutter, Math.abs(shutter))
         gl.uniform1f(u_rolling, rolling)
         gl.clearColor(0.0, 0.0, 0.0, 0.0)
