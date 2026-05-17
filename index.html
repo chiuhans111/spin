@@ -913,7 +913,7 @@
             return;
         }
         chunks = [];
-        const tracks = [...canvas.captureStream(60).getVideoTracks()];
+        const tracks = [...canvas.captureStream().getVideoTracks()];
         if (audioCtx && masterGain) {
             const dest = audioCtx.createMediaStreamDestination();
             masterGain.connect(dest);
