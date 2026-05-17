@@ -910,8 +910,8 @@
         const stream = new MediaStream(tracks);
 
         let options = {
-            videoBitsPerSecond: 6000000,
-            audioBitsPerSecond: 128000
+            videoBitsPerSecond: 1500000,
+            audioBitsPerSecond: 96000
         };
         if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
             options.mimeType = 'video/webm;codecs=vp9,opus';
