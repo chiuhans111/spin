@@ -158,6 +158,10 @@
                 <input type="range" id="rollingMult" min="0" max="2" step="0.1" value="1.0">
                 <span id="rollingMult-val">1.0</span>
             </div>
+            <div class="control-group" style="justify-content: flex-start; gap: 30px;">
+                <label for="soundToggle" style="flex: 0;">Sound</label>
+                <input type="checkbox" id="soundToggle" style="width: 20px; height: 20px; cursor: pointer;">
+            </div>
             <button id="resetBtn">Reset Spin</button>
         </div>
     </div>
@@ -544,6 +548,7 @@
     const shutterMultVal = document.getElementById('shutterMult-val')
     const rollingMultInput = document.getElementById('rollingMult')
     const rollingMultVal = document.getElementById('rollingMult-val')
+    const soundToggle = document.getElementById('soundToggle')
     const resetBtn = document.getElementById('resetBtn')
     const info = document.getElementById('info')
 
@@ -577,6 +582,78 @@
         deltaAngle = 0.0
     })
 
+    // --- Audio System ---
+    let audioCtx = null;
+    let mainOsc = null; 
+    let noiseSrc = null;
+    let noiseFilter = null;
+    let oscGain = null;
+    let noiseGain = null;
+    let masterGain = null;
+
+    soundToggle.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                masterGain = audioCtx.createGain();
+                masterGain.gain.value = 0;
+                masterGain.connect(audioCtx.destination);
+
+                // 1. Custom Harmonic Oscillator (Mix of 1-blade, 2-blade, etc.)
+                mainOsc = audioCtx.createOscillator();
+                const numHarmonics = 32;
+                const real = new Float32Array(numHarmonics);
+                const imag = new Float32Array(numHarmonics);
+                real[0] = 0; // DC offset
+                for (let i = 1; i < numHarmonics; i++) {
+                    // Mix decreasing amounts of harmonics.
+                    // This creates a rich, realistic motor/propeller tone.
+                    real[i] = 1.0 / Math.pow(i, 1.5); 
+                }
+                const wave = audioCtx.createPeriodicWave(real, imag);
+                mainOsc.setPeriodicWave(wave);
+                
+                oscGain = audioCtx.createGain();
+                oscGain.gain.value = 0.8;
+                mainOsc.connect(oscGain);
+                oscGain.connect(masterGain);
+                mainOsc.start();
+
+                // 2. Wind/Air Noise
+                const bufferSize = audioCtx.sampleRate * 2; // 2 seconds of noise
+                const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+                noiseSrc = audioCtx.createBufferSource();
+                noiseSrc.buffer = noiseBuffer;
+                noiseSrc.loop = true;
+
+                noiseFilter = audioCtx.createBiquadFilter();
+                noiseFilter.type = 'lowpass';
+                noiseFilter.frequency.value = 100;
+                noiseFilter.Q.value = 1.0;
+
+                noiseGain = audioCtx.createGain();
+                noiseGain.gain.value = 0.0;
+
+                noiseSrc.connect(noiseFilter);
+                noiseFilter.connect(noiseGain);
+                noiseGain.connect(masterGain);
+                noiseSrc.start();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        } else {
+            if (masterGain) {
+                masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+            }
+        }
+    });
+
     function update() {
         setTimeout(update, 1000 / 60);
         // requestAnimationFrame(update)
@@ -604,7 +681,29 @@
 
         deltaAngle += -correctionAngle * 0.1 * deltaTime
 
+        let rpm = Math.abs(deltaAngle * 60);
         info.textContent = "RPM: " + (deltaAngle * 60).toFixed(0).padStart(5, " ")
+
+        if (audioCtx && soundToggle.checked) {
+            // Fundamental frequency: 1 Hz = 60 RPM
+            // Custom waveform automatically generates all the 2-blade, 3-blade, etc. harmonics
+            let baseFreq = Math.max(rpm / 60, 0.1);
+            mainOsc.frequency.setTargetAtTime(baseFreq, audioCtx.currentTime, 0.1);
+
+            // Wind noise filter opens up as RPM increases (more high pitched whoosh)
+            let filterFreq = Math.min(100 + rpm * 1.5, 10000);
+            noiseFilter.frequency.setTargetAtTime(filterFreq, audioCtx.currentTime, 0.1);
+
+            // Mix: More air noise at high RPMs
+            let noiseVol = Math.min(rpm / 3000, 1.0) * 0.6;
+            let oscVol = 0.8;
+            noiseGain.gain.setTargetAtTime(noiseVol, audioCtx.currentTime, 0.1);
+            oscGain.gain.setTargetAtTime(oscVol, audioCtx.currentTime, 0.1);
+
+            // Master Volume increases with RPM
+            let targetGain = Math.min(rpm / 1500, 1.0) * 0.3; 
+            masterGain.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.1);
+        }
 
 
         angle += deltaAngle * deltaTime
