@@ -19,64 +19,105 @@
             transition: background-color 0.5s ease;
             display: flex;
             justify-content: center;
-            min-height: 100vh;
+            height: 100dvh; /* dynamic viewport handles mobile address bars perfectly */
+            width: 100vw;
+            position: fixed;
+            top: 0;
+            left: 0;
+            overflow: hidden;
             color: #fff;
             background-color: #222;
         }
 
         .container {
             margin: auto;
-            max-width: 800px;
+            width: 100%;
+            height: 100%;
+            max-width: 1200px;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
-            gap: 5px;
-            padding: 10px 20px;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-width: 0;
+            min-height: 0;
+            height: 100%;
         }
 
         canvas {
-            max-width: 100%;
-            height: auto;
-            background: rgba(0, 0, 0, 0.2);
-        }
-
-        .upload-section {
             width: 100%;
-            display: flex;
-            justify-content: center;
-        }
-
-        /* File Selector */
-        #file {
+            height: 100%;
             max-width: 100%;
-            color: rgba(255, 255, 255, 0.9);
-            font-family: inherit;
+            max-height: 100%;
+            object-fit: contain;
         }
 
-        #file::file-selector-button {
-            padding: 0.8em 1.6em;
+        /* Buttons */
+        .custom-file-upload, #resetBtn {
+            width: 100%;
+            padding: 0.8em;
             border: none;
             background-color: rgba(255, 255, 255, 0.1);
             color: white;
             cursor: pointer;
             font-weight: 600;
+            font-family: inherit;
+            font-size: 1rem;
             transition: all 0.2s ease;
-            margin-right: 16px;
+            text-align: center;
+            box-sizing: border-box;
+            display: inline-block;
         }
 
-        #file::file-selector-button:hover {
+        .custom-file-upload:hover, #resetBtn:hover {
             background-color: rgba(255, 255, 255, 0.2);
-            transform: translateY(-1px);
         }
 
         .controls {
+            border-radius: 4px;
+            flex: 0 0 350px;
+            width: 100%;
+            max-width: 400px;
             display: flex;
             flex-direction: column;
             gap: 10px;
-            width: 100%;
-            max-width: 400px;
-            background: rgba(0, 0, 0, 0.2);
+            background: rgba(0, 0, 0, 0.9);
             padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            max-height: 100%;
+        }
+
+        @media (max-width: 800px) {
+            .container {
+                flex-direction: column;
+                padding: 10px;
+                gap: 5px;
+            }
+            .canvas-container {
+                width: 100%;
+                flex: 1 1 0%; /* forces it to shrink infinitely if needed */
+            }
+            .controls {
+                flex: 0 0 auto;
+                padding: 10px;
+                gap: 5px;
+            }
+            .control-group {
+                gap: 10px;
+            }
+            #resetBtn {
+                margin-top: 0;
+            }
         }
 
         .control-group {
@@ -107,19 +148,7 @@
         }
 
         #resetBtn {
-            width: 100%;
-            padding: 0.8em;
-            border: none;
-            background-color: rgba(255, 255, 255, 0.1);
-            color: white;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.2s ease;
             margin-top: 8px;
-        }
-
-        #resetBtn:hover {
-            background-color: rgba(255, 255, 255, 0.2);
         }
 
         #info {
@@ -132,18 +161,15 @@
 <body>
     <div class="container">
 
-        <div>
+        <div class="canvas-container">
             <canvas id="canvas"></canvas>
         </div>
         <div class="controls">
-            <div class="control-group">
+            <div class="control-group" style="justify-content: space-between;">
                 <span id="info">Loading...</span>
-            </div>
-            <div class="control-group" style="justify-content: flex-start; gap: 30px;">
-                <label for="soundToggle" style="flex: 0;">Sound</label>
-                <input type="checkbox" id="soundToggle" style="width: 20px; height: 20px; cursor: pointer;">
-                <div class="upload-section">
-                    <input type="file" id="file" accept="image/png, image/jpeg, image/webp" />
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label for="soundToggle" style="margin: 0; cursor: pointer;">Sound</label>
+                    <input type="checkbox" id="soundToggle" style="width: 20px; height: 20px; cursor: pointer; margin: 0;">
                 </div>
             </div>
             <div class="control-group">
@@ -167,7 +193,11 @@
                 <span id="rollingMult-val">1.0</span>
             </div>
 
-            <button id="resetBtn">Reset Spin</button>
+            <div style="display: flex; gap: 10px; width: 100%;">
+                <label for="file" class="custom-file-upload" style="flex: 1;">Choose Image</label>
+                <input type="file" id="file" accept="image/png, image/jpeg, image/webp" style="display: none;" />
+                <button id="resetBtn" style="flex: 1; margin: 0;">Reset Spin</button>
+            </div>
         </div>
     </div>
 </body>
