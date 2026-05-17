@@ -219,9 +219,20 @@
         <div class="controls">
             <div class="control-group">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <button id="playBtn" class="icon-btn" title="Play/Pause"><svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
-                    <button id="resetBtn" class="icon-btn" title="Reset Spin"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg></button>
-                    <button id="muteBtn" class="icon-btn" title="Mute/Unmute"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg></button>
+                    <button id="playBtn" class="icon-btn" title="Play/Pause"><svg width="32" height="32"
+                             viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5v14l11-7z" />
+                        </svg></button>
+                    <button id="resetBtn" class="icon-btn" title="Reset Spin"><svg width="24" height="24"
+                             viewBox="0 0 24 24" fill="currentColor">
+                            <path
+                                  d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+                        </svg></button>
+                    <button id="muteBtn" class="icon-btn" title="Mute/Unmute"><svg width="24" height="24"
+                             viewBox="0 0 24 24" fill="currentColor">
+                            <path
+                                  d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                        </svg></button>
                 </div>
                 <span id="info" style="min-width: 70px; text-align: left;">RPM: 0</span>
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -300,24 +311,6 @@
     uniform vec2 u_canvas_size;
     uniform sampler2D u_texture;
 
-    float srgb2linear(float c){
-        // Simple
-        // return pow(c, 2.2);
-        // Rec. 709
-        if(c<=0.04045) return c/12.92;
-        return pow((c+0.055)/1.055, 2.4);
-    }
-
-    vec4 srgb2linear(vec4 c){
-        return vec4(
-            srgb2linear(c.r),
-            srgb2linear(c.g),
-            srgb2linear(c.b),
-            c.a
-        );
-    }
-
-
     #define SAMPLES 2
 
     void main(void) {
@@ -329,7 +322,7 @@
                 sin(x * 2.0 * PI)
             ) * (v_position.y * 0.5) * length(u_texture_size) / u_texture_size + 0.5;
             vec4 v = texture2D(u_texture, polar);
-            c += srgb2linear(v) / float(SAMPLES);
+            c += v / float(SAMPLES);
         }
         gl_FragColor = c;
     }
@@ -619,6 +612,11 @@
         return 1.055 * Math.pow(c, 1.0 / 2.4) - 0.055;
     }
 
+    function rgb2linear(c) {
+        if (c <= 0.04045) return c / 12.92;
+        return Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+
 
     // ==========================================
     // === 3. MAIN RENDER PIPELINE
@@ -664,23 +662,24 @@
         const prefix1 = new Uint8Array(bufferWidth * bufferHeight * 4)
         const prefix2 = new Uint8Array(bufferWidth * bufferHeight * 4)
         for (let y = 0; y < bufferHeight; y++) {
-            const prefixSum = new Int32Array(4);
+            const prefixSum = new Float32Array(4);
             for (let x = 0; x < bufferWidth; x++) {
                 for (let c = 0; c < 4; c++) {
                     const i = (x + y * bufferWidth) * 4
-                    prefixSum[c] += rawOutputData[i + c];
-                    prefix0[i + c] = (prefixSum[c] % 64)
-                    prefix1[i + c] = ((prefixSum[c] >> 6) % 64)
-                    prefix2[i + c] = ((prefixSum[c] >> 12) % 64)
+                    prefixSum[c] += rgb2linear(rawOutputData[i + c] / 255);
+                    const quantized = Math.round(prefixSum[c] * 255)
+                    prefix0[i + c] = (quantized % 64)
+                    prefix1[i + c] = ((quantized >> 6) % 64)
+                    prefix2[i + c] = ((quantized >> 12) % 64)
                     // prefix2[i + c] = rawOutputData[i + c]
                 }
             }
 
             if (y == bufferHeight - 1) {
-                const r = Math.round(linear2srgb(prefixSum[0] / bufferWidth / 255) * 255)
-                const g = Math.round(linear2srgb(prefixSum[1] / bufferWidth / 255) * 255)
-                const b = Math.round(linear2srgb(prefixSum[2] / bufferWidth / 255) * 255)
-                const a = prefixSum[3] / bufferWidth / 255
+                const r = Math.round(linear2srgb(prefixSum[0] / bufferWidth) * 255)
+                const g = Math.round(linear2srgb(prefixSum[1] / bufferWidth) * 255)
+                const b = Math.round(linear2srgb(prefixSum[2] / bufferWidth) * 255)
+                const a = prefixSum[3] / bufferWidth
                 document.body.style.backgroundColor = "rgba(" + r + "," + g + "," + b + "," + a + ")"
             }
         }
