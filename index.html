@@ -223,15 +223,14 @@
                              viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5v14l11-7z" />
                         </svg></button>
-                    <button id="resetBtn" class="icon-btn" title="Reset Spin"><svg width="24" height="24"
-                             viewBox="0 0 24 24" fill="currentColor">
-                            <path
-                                  d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
-                        </svg></button>
                     <button id="muteBtn" class="icon-btn" title="Mute/Unmute"><svg width="24" height="24"
                              viewBox="0 0 24 24" fill="currentColor">
                             <path
                                   d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                        </svg></button>
+                    <button id="recordBtn" class="icon-btn" title="Record Video"><svg width="24" height="24"
+                             viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="12" cy="12" r="8" fill="red" />
                         </svg></button>
                 </div>
                 <span id="info" style="min-width: 70px; text-align: left;">RPM: 0</span>
@@ -281,6 +280,11 @@
                 </select>
                 <label for="file" class="custom-file-upload" style="flex: 1;">Open Image...</label>
                 <input type="file" id="file" accept="image/png, image/jpeg, image/webp" style="display: none;" />
+                <button id="resetBtn" class="icon-btn" title="Reset Spin"><svg width="24" height="24"
+                         viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                              d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+                    </svg></button>
             </div>
         </div>
     </div>
@@ -818,6 +822,7 @@
     const playBtn = document.getElementById('playBtn')
     const muteBtn = document.getElementById('muteBtn')
     const resetBtn = document.getElementById('resetBtn')
+    const recordBtn = document.getElementById('recordBtn')
     const info = document.getElementById('info')
 
     // Parameters state
@@ -827,6 +832,8 @@
     let paramMaxrpm = Math.pow(maxrpmInput.value, 2)
     let paramShutterMult = parseFloat(shutterMultInput.value)
     let paramRollingMult = parseFloat(rollingMultInput.value)
+
+    let mediaRecorder, chunks = [];
 
     function updateParams() {
         paramAccel = parseFloat(accelInput.value)
@@ -848,6 +855,14 @@
     rollingMultInput.addEventListener('input', updateParams)
 
     resetBtn.addEventListener('click', () => {
+        // Stop play
+        if (isStarted) {
+            isStarted = false;
+            playBtn.innerHTML = svgPlay;
+            if (audioCtx && audioCtx.state === 'running') {
+                audioCtx.suspend();
+            }
+        }
         angle = 0
         deltaAngle = 0.0
     })
@@ -876,6 +891,44 @@
     muteBtn.addEventListener('click', () => {
         isMuted = !isMuted;
         muteBtn.innerHTML = isMuted ? svgMute : svgUnmute;
+    });
+
+    recordBtn.addEventListener('click', () => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            recordBtn.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8" fill="red"/></svg>`;
+            return;
+        }
+        chunks = [];
+        const tracks = [...canvas.captureStream(60).getVideoTracks()];
+        if (audioCtx && masterGain) {
+            const dest = audioCtx.createMediaStreamDestination();
+            masterGain.connect(dest);
+            const audioTrack = dest.stream.getAudioTracks()[0];
+            if (audioTrack) tracks.push(audioTrack);
+        }
+        const stream = new MediaStream(tracks);
+
+        let options = {
+            videoBitsPerSecond: 6000000,
+            audioBitsPerSecond: 128000
+        };
+        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+            options.mimeType = 'video/webm;codecs=vp9,opus';
+        } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+            options.mimeType = 'video/webm;codecs=vp8,opus';
+        }
+
+        mediaRecorder = new MediaRecorder(stream, options);
+        mediaRecorder.ondataavailable = e => chunks.push(e.data);
+        mediaRecorder.onstop = () => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+            a.download = `spin-${Date.now()}.webm`;
+            a.click();
+        };
+        mediaRecorder.start();
+        recordBtn.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" fill="red"/></svg>`;
     });
 
     // ==========================================
