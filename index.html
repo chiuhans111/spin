@@ -273,7 +273,7 @@
             <div style="display: flex; gap: 10px; width: 100%;">
                 <select id="presetSelect" class="custom-file-upload"
                         style="flex: 1; margin: 0; appearance: none; text-align: center;">
-                    <option value="custom">Preset</option>
+                    <option value="custom" disabled selected hidden>Preset</option>
                     <option value="sample.png">Propeller</option>
                     <option value="presets/preset_square.png">Square Wave</option>
                     <option value="presets/preset_sawtooth.png">Sawtooth Wave</option>
@@ -498,6 +498,7 @@
         if (e.target.value !== 'custom') {
             const img = new Image()
             img.src = e.target.value
+            presetSelect.value = 'custom'
             targetImg = img
             main()
         }
