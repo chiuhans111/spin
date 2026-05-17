@@ -133,16 +133,21 @@
 
 <body>
     <div class="container">
-        <div class="upload-section">
-            <input type="file" id="file" accept="image/png, image/jpeg, image/webp" />
-        </div>
+
         <div>
             <canvas id="canvas"></canvas>
         </div>
-        <div>
-            <span id="info">Loading...</span>
-        </div>
         <div class="controls">
+            <div class="control-group">
+                <span id="info">Loading...</span>
+            </div>
+            <div class="control-group" style="justify-content: flex-start; gap: 30px;">
+                <label for="soundToggle" style="flex: 0;">Sound</label>
+                <input type="checkbox" id="soundToggle" style="width: 20px; height: 20px; cursor: pointer;">
+                <div class="upload-section">
+                    <input type="file" id="file" accept="image/png, image/jpeg, image/webp" />
+                </div>
+            </div>
             <div class="control-group">
                 <label for="accel">Acceleration</label>
                 <input type="range" id="accel" min="-5" max="5" step="0.1" value="2">
@@ -163,10 +168,7 @@
                 <input type="range" id="rollingMult" min="0" max="2" step="0.1" value="1.0">
                 <span id="rollingMult-val">1.0</span>
             </div>
-            <div class="control-group" style="justify-content: flex-start; gap: 30px;">
-                <label for="soundToggle" style="flex: 0;">Sound</label>
-                <input type="checkbox" id="soundToggle" style="width: 20px; height: 20px; cursor: pointer;" >
-            </div>
+
             <button id="resetBtn">Reset Spin</button>
         </div>
     </div>
@@ -193,6 +195,24 @@
     uniform vec2 u_canvas_size;
     uniform sampler2D u_texture;
 
+    float srgb2linear(float c){
+        // Simple
+        // return pow(c, 2.2);
+        // Rec. 709
+        if(c<=0.04045) return c/12.92;
+        return pow((c+0.055)/1.055, 2.4);
+    }
+
+    vec4 srgb2linear(vec4 c){
+        return vec4(
+            srgb2linear(c.r),
+            srgb2linear(c.g),
+            srgb2linear(c.b),
+            c.a
+        );
+    }
+
+
     #define SAMPLES 4
 
     void main(void) {
@@ -205,11 +225,7 @@
             ) * (v_position.y * 0.5) * length(u_texture_size) / u_texture_size + 0.5;
             c += texture2D(u_texture, polar) / float(SAMPLES);
         }
-
-        c.r = pow(c.r, 2.2);
-        c.g = pow(c.g, 2.2);
-        c.b = pow(c.b, 2.2);
-        gl_FragColor = c;
+        gl_FragColor = srgb2linear(c);
     }
 </script>
 <script id="fragmentShaderRender" type="x-shader/x-fragment">
@@ -227,6 +243,38 @@
     uniform float u_angle;
     uniform float u_shutter;
     uniform float u_rolling;
+
+    float srgb2linear(float c){
+        // Simple
+        // return pow(c, 2.2);
+        // Rec. 709
+        if(c<=0.04045) return c/12.92;
+        return pow((c+0.055)/1.055, 2.4);
+    }
+
+    vec4 srgb2linear(vec4 c){
+        return vec4(
+            srgb2linear(c.r),
+            srgb2linear(c.g),
+            srgb2linear(c.b),
+            c.a
+        );
+    }
+
+    float linear2srgb(float c){
+        // return pow(c, 1.0/2.2);
+        if(c<=0.0031308) return c*12.92;
+        return 1.055*pow(c, 1.0/2.4) - 0.055;
+    }
+
+    vec4 linear2srgb(vec4 c){
+        return vec4(
+            linear2srgb(c.r),
+            linear2srgb(c.g),
+            linear2srgb(c.b),
+            c.a
+        );
+    }
 
 
     vec4 integral2(float x1, float x2, float y, float norm){
@@ -297,7 +345,8 @@
                 cos(x * 2.0 * PI),
                 sin(x * 2.0 * PI)
             ) * (p.y * 0.5) * length(u_texture_size) / u_texture_size + 0.5;
-            c0 += texture2D(u_texture, polar) / float(SAMPLES);
+            vec4 v = texture2D(u_texture, polar);
+            c0 += srgb2linear(v) / float(SAMPLES);
         }
 
         // Debug: Red is blended with sampling.
@@ -305,12 +354,9 @@
         
         
         vec4 c = integral(p, max(u_shutter, 1.5/u_texture_size.x));
-
-        c.r = pow(c.r, 1.0/2.2);
-        c.g = pow(c.g, 1.0/2.2);
-        c.b = pow(c.b, 1.0/2.2);
-
         c = mix(c0, c, smoothstep(0.0, 1.0, u_texture_size.x * u_shutter / 5.0 - 1.0));
+
+        c = linear2srgb(c);
 
         gl_FragColor = vec4(c);
 
@@ -444,6 +490,15 @@
     }
 
 
+    function linear2srgb(c) {
+        // simple
+        // return pow(c, 1.0/2.2);
+        // Rec. 709
+        if (c <= 0.0031308) return c * 12.92;
+        return 1.055 * Math.pow(c, 1.0 / 2.4) - 0.055;
+    }
+
+
     let u_angle, u_shutter, u_rolling;
 
     async function main() {
@@ -498,9 +553,9 @@
             }
 
             if (y == bufferHeight - 1) {
-                const r = Math.round(Math.pow(prefixSum[0] / bufferWidth / 255, 1 / 2.2) * 255)
-                const g = Math.round(Math.pow(prefixSum[1] / bufferWidth / 255, 1 / 2.2) * 255)
-                const b = Math.round(Math.pow(prefixSum[2] / bufferWidth / 255, 1 / 2.2) * 255)
+                const r = Math.round(linear2srgb(prefixSum[0] / bufferWidth / 255) * 255)
+                const g = Math.round(linear2srgb(prefixSum[1] / bufferWidth / 255) * 255)
+                const b = Math.round(linear2srgb(prefixSum[2] / bufferWidth / 255) * 255)
                 const a = prefixSum[3] / bufferWidth / 255
                 document.body.style.backgroundColor = "rgba(" + r + "," + g + "," + b + "," + a + ")"
             }
