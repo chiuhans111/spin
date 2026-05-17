@@ -48,17 +48,15 @@
 
         /* File Selector */
         #file {
-            max-width: 300px;
+            max-width: 100%;
             color: rgba(255, 255, 255, 0.9);
-            background-color: rgba(0, 0, 0, 0.2);
             font-family: inherit;
-            padding-right: 5px;
         }
 
         #file::file-selector-button {
             padding: 0.8em 1.6em;
             border: none;
-            background-color: rgba(0, 0, 0, 0.4);
+            background-color: rgba(255, 255, 255, 0.1);
             color: white;
             cursor: pointer;
             font-weight: 600;
@@ -67,7 +65,7 @@
         }
 
         #file::file-selector-button:hover {
-            background-color: rgba(255, 255, 255, 0.25);
+            background-color: rgba(255, 255, 255, 0.2);
             transform: translateY(-1px);
         }
 
@@ -154,8 +152,8 @@
                 <span id="accel-val">2</span>
             </div>
             <div class="control-group">
-                <label for="accel">Max RPM</label>
-                <input type="range" id="maxrpm" min="0" max="5000" step="0.01" value="1000">
+                <label for="maxrpm">Max RPM</label>
+                <input type="range" id="maxrpm" min="0" max="100" step="0.1" value="58.48">
                 <span id="maxrpm-val">1000</span>
             </div>
             <div class="control-group">
@@ -330,10 +328,10 @@
     #define SAMPLES 4
 
     void main(void) {
-        vec2 uv = (v_position - 0.5) / max(u_canvas_size.x, u_canvas_size.y) * u_canvas_size;
+        vec2 uv = (v_position - 0.5) / length(u_canvas_size) * u_canvas_size * 2.0;
         vec2 p = vec2(
             fract(atan(uv.y, uv.x)/PI*0.5 + u_angle + u_rolling * uv.y),
-            length(uv) * sqrt(2.0)
+            length(uv)
         );
 
         // sampling without shutter when shutter is small.
@@ -363,7 +361,9 @@
     }
 </script>
 <script>
-    // spin things!
+    // ==========================================
+    // === 1. STATE & DOM ELEMENTS
+    // ==========================================
     const fileInput = document.getElementById('file')
     const canvas = document.getElementById('canvas')
     canvas.width = 512;
@@ -389,6 +389,9 @@
         }
     })
 
+    // ==========================================
+    // === 2. WEBGL SETUP & UTILS
+    // ==========================================
     async function imageReady(img) {
         if (img.complete) return img
         return new Promise(done => img.addEventListener('load', _ => done(img)))
@@ -491,14 +494,14 @@
 
 
     function linear2srgb(c) {
-        // simple
-        // return pow(c, 1.0/2.2);
-        // Rec. 709
         if (c <= 0.0031308) return c * 12.92;
         return 1.055 * Math.pow(c, 1.0 / 2.4) - 0.055;
     }
 
 
+    // ==========================================
+    // === 3. MAIN RENDER PIPELINE
+    // ==========================================
     let u_angle, u_shutter, u_rolling;
 
     async function main() {
@@ -665,7 +668,7 @@
 
     // Parameters state
     let paramAccel = parseFloat(accelInput.value)
-    let paramMaxrpm = parseFloat(maxrpmInput.value)
+    let paramMaxrpm = Math.pow(parseFloat(maxrpmInput.value) / 100, 3) * 5000
     let paramShutterMult = parseFloat(shutterMultInput.value)
     let paramRollingMult = parseFloat(rollingMultInput.value)
 
@@ -673,7 +676,7 @@
         paramAccel = parseFloat(accelInput.value)
         accelVal.textContent = paramAccel.toFixed(2)
 
-        paramMaxrpm = parseFloat(maxrpmInput.value)
+        paramMaxrpm = Math.pow(parseFloat(maxrpmInput.value) / 100, 3) * 5000
         maxrpmVal.textContent = paramMaxrpm.toFixed(0)
 
         paramShutterMult = parseFloat(shutterMultInput.value)
@@ -693,7 +696,9 @@
         deltaAngle = 0.0
     })
 
-    // --- Audio System ---
+    // ==========================================
+    // === 4. AUDIO ENGINE
+    // ==========================================
     let audioCtx = null;
     let mainOsc = null;
     let noiseSrc = null;
@@ -831,6 +836,9 @@
     document.addEventListener('pointerdown', startAudioOnInteraction);
     document.addEventListener('keydown', startAudioOnInteraction);
 
+    // ==========================================
+    // === 5. ANIMATION LOOP
+    // ==========================================
     function update() {
         setTimeout(update, 1000 / 60);
         // requestAnimationFrame(update)
