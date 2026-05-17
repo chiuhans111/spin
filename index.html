@@ -77,22 +77,26 @@
         select,
         button {
             min-width: 40px;
-            height: 35px;
+            height: 38px;
             border: none;
             background: rgb(29, 29, 29);
             color: white;
             cursor: pointer;
             font-weight: 600;
             font-family: inherit;
-            font-size: 1rem;
+            font-size: 0.9rem;
             text-align: center;
             box-sizing: border-box;
             display: inline-flex;
             margin: 0;
             line-height: 1;
-            padding: 10px 5px;
+            padding: 8px 12px;
             justify-content: center;
             align-items: center;
+            border-radius: 4px;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
         }
 
         .custom-file-upload:hover,
@@ -106,7 +110,17 @@
             color: white;
         }
 
+        .icon-btn {
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            border-radius: 4px;
+        }
 
+        .icon-btn svg {
+            width: 20px !important;
+            height: 20px !important;
+        }
 
         #playBtn {
             background-color: rgb(231, 231, 231);
