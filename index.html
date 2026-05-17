@@ -517,6 +517,22 @@
         }
     });
 
+    // Handle drag and drop.
+    window.addEventListener('dragover', function (e) {
+        e.preventDefault();
+    });
+    window.addEventListener('drop', function (e) {
+        e.preventDefault();
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+            if (file.type.indexOf('image') !== -1) {
+                targetImg = fileToImage(file);
+                presetSelect.value = 'custom';
+                main();
+            }
+        }
+    });
+
     // ==========================================
     // === 2. WEBGL SETUP & UTILS
     // ==========================================
