@@ -62,26 +62,16 @@
             object-fit: contain;
         }
 
-        /* FPS Selector */
-        #fpsSelect {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: none;
-            padding: 4px;
-            border-radius: 4px;
-            font-family: inherit;
-            cursor: pointer;
-        }
-
-        select option {
-            background-color: #222;
-            color: white;
-        }
-
         /* Buttons */
-        .custom-file-upload {
-            width: 100%;
-            padding: 0.8em;
+
+
+
+        .custom-file-upload,
+        select,
+        button {
+            min-width: 50px;
+            height: 35px;
+            padding: 5px;
             border: none;
             background-color: rgba(255, 255, 255, 0.1);
             color: white;
@@ -95,30 +85,42 @@
             display: inline-block;
         }
 
-        .custom-file-upload:hover {
+        .custom-file-upload:hover,
+        select:hover,
+        button:hover {
             background-color: rgba(255, 255, 255, 0.2);
         }
 
-        #resetBtn {
+        select option {
+            background-color: #222;
+            color: white;
+        }
+
+        button {
             background: rgba(255, 255, 255, 0.1);
             color: white;
             border: none;
             border-radius: 4px;
-            font-family: inherit;
+            font-family: Arial, Helvetica, sans-serif;
             cursor: pointer;
-            width: 26px;
-            height: 26px;
+            min-width: 50px;
+            height: 35px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 1.1rem;
             transition: all 0.2s ease;
             margin: 0;
-            padding: 0;
             line-height: 1;
+            padding: 10px 5px;
         }
 
-        #resetBtn:hover {
+
+        #playBtn {
+            background-color: green;
+        }
+
+        button:hover {
             background-color: rgba(255, 255, 255, 0.2);
         }
 
@@ -166,6 +168,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 16px;
+            margin-bottom: 5px;
         }
 
         .control-group label {
@@ -204,32 +207,38 @@
         </div>
         <div class="controls">
             <div class="control-group">
-                <button id="resetBtn" title="Reset Spin">⟲</button>
-                <span id="info">Loading...</span>
-                <select id="fpsSelect">
-                    <option value="unlimited">Max FPS</option>
-                    <option value="60">60 FPS</option>
-                    <option value="30">30 FPS</option>
-                    <option value="29.97">29.97 FPS</option>
-                    <option value="24">24 FPS</option>
-                </select>
-                <label for="soundToggle" style="margin: 0; cursor: pointer; flex-grow: 0;">Sound</label>
-                <input type="checkbox" id="soundToggle"
-                       style="width: 20px; height: 20px; cursor: pointer; margin: 0;" checked>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button id="playBtn" class="icon-btn" title="Play/Pause">▶</button>
+                    <button id="resetBtn" class="icon-btn" title="Reset Spin">⟲</button>
+                    <button id="muteBtn" class="icon-btn" title="Mute/Unmute">🔊</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <select id="fpsSelect">
+                        <option value="unlimited">Max FPS</option>
+                        <option value="60">60 FPS</option>
+                        <option value="30">30 FPS</option>
+                        <option value="29.97">29.97 FPS</option>
+                        <option value="24">24 FPS</option>
+                    </select>
+                </div>
             </div>
+            <span id="info" style="min-width: 70px; text-align: left;">RPM: 0</span>
+
+
             <div class="control-group">
                 <label for="accel">Acceleration</label>
-                <input type="range" id="accel" min="-5" max="5" step="0.1" value="2">
-                <span id="accel-val">2</span>
+                <input type="range" id="accel" min="-5" max="5" step="0.1" value="3">
+                <span id="accel-val">3</span>
             </div>
             <div class="control-group">
                 <label for="maxrpm">Max RPM</label>
                 <input type="range" id="maxrpm" min="0" max="100" step="0.1" value="58.48">
                 <span id="maxrpm-val">1000</span>
             </div>
+
             <div class="control-group">
                 <label for="shutterMult">Shutter</label>
-                <input type="range" id="shutterMult" min="0" max="1" step="0.05" value="0.3">
+                <input type="range" id="shutterMult" min="0" max="1" step="0.01" value="0.3">
                 <span id="shutterMult-val">0.30</span>
             </div>
             <div class="control-group">
@@ -238,16 +247,17 @@
                 <span id="rollingMult-val">1.0</span>
             </div>
 
+
             <div style="display: flex; gap: 10px; width: 100%;">
                 <select id="presetSelect" class="custom-file-upload"
                         style="flex: 1; margin: 0; appearance: none; text-align: center;">
-                    <option value="custom">Preset...</option>
+                    <option value="custom">Preset</option>
                     <option value="sample.png">Propeller</option>
                     <option value="presets/preset_square.png">Square Wave</option>
                     <option value="presets/preset_sawtooth.png">Sawtooth Wave</option>
                     <option value="presets/preset_chord.png">Chord</option>
                 </select>
-                <label for="file" class="custom-file-upload" style="flex: 1;">Choose Image</label>
+                <label for="file" class="custom-file-upload" style="flex: 1;">Open Image...</label>
                 <input type="file" id="file" accept="image/png, image/jpeg, image/webp" style="display: none;" />
             </div>
         </div>
@@ -293,7 +303,7 @@
     }
 
 
-    #define SAMPLES 4
+    #define SAMPLES 2
 
     void main(void) {
         vec4 c = vec4(0);
@@ -407,7 +417,7 @@
         return accum;
     }
 
-    #define SAMPLES 4
+    #define SAMPLES 8
 
     void main(void) {
         vec2 uv = (v_position - 0.5) / length(u_canvas_size) * u_canvas_size * 2.0;
@@ -420,7 +430,7 @@
 
         vec4 c0 = vec4(0);
         for(int i=0;i<SAMPLES;i++){
-            float x = p.x + float(i)/float(SAMPLES) * u_shutter;
+            float x = p.x - float(i)/float(SAMPLES) * u_shutter;
             vec2 polar = vec2(
                 cos(x * 2.0 * PI),
                 sin(x * 2.0 * PI)
@@ -604,7 +614,7 @@
 
         bindIdBuffer(program)
 
-        const bufferWidth = 512 // Or whatever size > canvas you need!
+        const bufferWidth = 1024 // Or whatever size > canvas you need!
         const bufferHeight = Math.ceil(Math.max(canvas.width, canvas.height))
         bindFrameBuffer(bufferWidth, bufferHeight)
 
@@ -740,9 +750,10 @@
         deltaAngle = 0.0
     }
 
+
+    // Physics variables.
     let angle = 0
     let deltaAngle = 0.0
-
     let prevTime = NaN
 
     // Parameter Elements
@@ -755,11 +766,14 @@
     const rollingMultInput = document.getElementById('rollingMult')
     const rollingMultVal = document.getElementById('rollingMult-val')
     const fpsSelect = document.getElementById('fpsSelect')
-    const soundToggle = document.getElementById('soundToggle')
+    const playBtn = document.getElementById('playBtn')
+    const muteBtn = document.getElementById('muteBtn')
     const resetBtn = document.getElementById('resetBtn')
     const info = document.getElementById('info')
 
     // Parameters state
+    let isStarted = false
+    let isMuted = false
     let paramAccel = parseFloat(accelInput.value)
     let paramMaxrpm = Math.pow(parseFloat(maxrpmInput.value) / 100, 3) * 5000
     let paramShutterMult = parseFloat(shutterMultInput.value)
@@ -788,6 +802,23 @@
         angle = 0
         deltaAngle = 0.0
     })
+
+    playBtn.addEventListener('click', () => {
+        isStarted = !isStarted;
+        playBtn.textContent = isStarted ? '⏸' : '▶';
+
+        if (isStarted) {
+            initAudio();
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+    });
+
+    muteBtn.addEventListener('click', () => {
+        isMuted = !isMuted;
+        muteBtn.textContent = isMuted ? '🔇' : '🔊';
+    });
 
     // ==========================================
     // === 4. AUDIO ENGINE
@@ -900,68 +931,45 @@
         noiseSrc.start();
     }
 
-    function toggleAudio() {
-        if (soundToggle.checked) {
-            initAudio();
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-        } else {
-            if (masterGain) {
-                masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
-            }
-        }
-    }
-
-    soundToggle.addEventListener('change', toggleAudio);
-
-    // Handle browser autoplay policies by starting audio on first interaction
-    const startAudioOnInteraction = () => {
-        if (soundToggle.checked && !audioCtx) {
-            toggleAudio();
-        }
-        if (audioCtx) {
-            document.removeEventListener('pointerdown', startAudioOnInteraction);
-            document.removeEventListener('keydown', startAudioOnInteraction);
-        }
-    };
-
-    document.addEventListener('pointerdown', startAudioOnInteraction);
-    document.addEventListener('keydown', startAudioOnInteraction);
-
     // ==========================================
     // === 5. ANIMATION LOOP
     // ==========================================
+    let deltaTime = 0
     function update() {
         requestAnimationFrame(update);
         let time = Date.now();
-        let deltaTime = (time - prevTime) / 1000;
 
-        let targetFPS = fpsSelect.value;
-        if (targetFPS !== "unlimited") {
-            let targetFrameTime = 1 / parseFloat(targetFPS);
-            if (deltaTime < targetFrameTime) {
-                return;
+        if (isStarted) {
+            deltaTime = (time - prevTime) / 1000;
+
+            let targetFPS = fpsSelect.value;
+            if (targetFPS !== "unlimited") {
+                let targetFrameTime = 1 / parseFloat(targetFPS);
+                if (deltaTime < targetFrameTime) {
+                    return;
+                }
             }
         }
 
         prevTime = time;
-        if (!deltaTime) return;
-
 
         // Set uniform.
 
         let maxrps = paramMaxrpm / 60
 
-        if (deltaAngle > maxrps - 0.01) {
-            deltaAngle += (maxrps - deltaAngle) * Math.min(1.0, 2.0 * deltaTime)
-        }
-        else if (deltaAngle < -maxrps + 0.01) {
-            deltaAngle += (-maxrps - deltaAngle) * Math.min(1.0, 2.0 * deltaTime)
-        } else {
-            deltaAngle += paramAccel * deltaTime
-        }
+        if (isStarted) {
+            if (deltaAngle > maxrps - 0.01) {
+                deltaAngle += (maxrps - deltaAngle) * Math.min(1.0, 2.0 * deltaTime)
+            }
+            else if (deltaAngle < -maxrps + 0.01) {
+                deltaAngle += (-maxrps - deltaAngle) * Math.min(1.0, 2.0 * deltaTime)
+            } else {
+                deltaAngle += paramAccel * deltaTime
+            }
+            angle += deltaAngle * deltaTime
 
+
+        }
 
         // let correctionAngle = (angle + 0.5) % 1 - 0.5
         // deltaAngle += -correctionAngle  * deltaTime
@@ -969,7 +977,7 @@
         let rpm = Math.abs(deltaAngle * 60);
         info.textContent = "RPM: " + (deltaAngle * 60).toFixed(0).padStart(5, " ")
 
-        if (audioCtx && soundToggle.checked && mainOsc) {
+        if (audioCtx && mainOsc) {
             let baseFreq = Math.max(rpm / 60, 0.5);
             let rate = baseFreq * (globalWaveData.length / audioCtx.sampleRate);
             mainOsc.playbackRate.setTargetAtTime(rate, audioCtx.currentTime, 0.1);
@@ -986,21 +994,18 @@
             noiseGain.gain.setTargetAtTime(noiseVol, audioCtx.currentTime, 0.1);
 
             let targetGain = Math.min(rpm / 1000, 1.0) * 0.3;
-            if (rpm < 1) targetGain = 0;
+            if (rpm < 1 || isMuted || !isStarted) targetGain = 0;
             masterGain.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.1);
         }
 
 
-        angle += deltaAngle * deltaTime
-
+        // Render.
         let shutter = deltaAngle * deltaTime * paramShutterMult
         let rolling = -deltaAngle * deltaTime * paramRollingMult
 
         gl.uniform1f(u_angle, angle)
         gl.uniform1f(u_shutter, Math.abs(shutter))
         gl.uniform1f(u_rolling, rolling)
-
-        // Render.
         gl.clearColor(0.0, 0.0, 0.0, 0.0)
         gl.clearDepth(1.0)
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
