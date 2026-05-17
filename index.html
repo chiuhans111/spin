@@ -73,14 +73,13 @@
             cursor: pointer;
         }
 
-        #fpsSelect option {
+        select option {
             background-color: #222;
             color: white;
         }
 
         /* Buttons */
-        .custom-file-upload,
-        #resetBtn {
+        .custom-file-upload {
             width: 100%;
             padding: 0.8em;
             border: none;
@@ -96,7 +95,29 @@
             display: inline-block;
         }
 
-        .custom-file-upload:hover,
+        .custom-file-upload:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        #resetBtn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-family: inherit;
+            cursor: pointer;
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            transition: all 0.2s ease;
+            margin: 0;
+            padding: 0;
+            line-height: 1;
+        }
+
         #resetBtn:hover {
             background-color: rgba(255, 255, 255, 0.2);
         }
@@ -138,10 +159,6 @@
             .control-group {
                 gap: 10px;
             }
-
-            #resetBtn {
-                margin-top: 0;
-            }
         }
 
         .control-group {
@@ -171,9 +188,6 @@
             color: rgba(255, 255, 255, 0.7);
         }
 
-        #resetBtn {
-            margin-top: 8px;
-        }
 
         #info {
             font-family: monospace;
@@ -189,20 +203,19 @@
             <canvas id="canvas"></canvas>
         </div>
         <div class="controls">
-            <div class="control-group" style="justify-content: space-between;">
+            <div class="control-group">
+                <button id="resetBtn" title="Reset Spin">⟲</button>
                 <span id="info">Loading...</span>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <select id="fpsSelect">
-                        <option value="unlimited">Max FPS</option>
-                        <option value="60">60 FPS</option>
-                        <option value="30">30 FPS</option>
-                        <option value="29.97">29.97 FPS</option>
-                        <option value="24">24 FPS</option>
-                    </select>
-                    <label for="soundToggle" style="margin: 0; cursor: pointer;">Sound</label>
-                    <input type="checkbox" id="soundToggle"
-                           style="width: 20px; height: 20px; cursor: pointer; margin: 0;">
-                </div>
+                <select id="fpsSelect">
+                    <option value="unlimited">Max FPS</option>
+                    <option value="60">60 FPS</option>
+                    <option value="30">30 FPS</option>
+                    <option value="29.97">29.97 FPS</option>
+                    <option value="24">24 FPS</option>
+                </select>
+                <label for="soundToggle" style="margin: 0; cursor: pointer; flex-grow: 0;">Sound</label>
+                <input type="checkbox" id="soundToggle"
+                       style="width: 20px; height: 20px; cursor: pointer; margin: 0;" checked>
             </div>
             <div class="control-group">
                 <label for="accel">Acceleration</label>
@@ -226,9 +239,16 @@
             </div>
 
             <div style="display: flex; gap: 10px; width: 100%;">
+                <select id="presetSelect" class="custom-file-upload"
+                        style="flex: 1; margin: 0; appearance: none; text-align: center;">
+                    <option value="custom">Preset...</option>
+                    <option value="sample.png">Propeller</option>
+                    <option value="presets/preset_square.png">Square Wave</option>
+                    <option value="presets/preset_sawtooth.png">Sawtooth Wave</option>
+                    <option value="presets/preset_chord.png">Chord</option>
+                </select>
                 <label for="file" class="custom-file-upload" style="flex: 1;">Choose Image</label>
                 <input type="file" id="file" accept="image/png, image/jpeg, image/webp" style="display: none;" />
-                <button id="resetBtn" style="flex: 1; margin: 0;">Reset Spin</button>
             </div>
         </div>
     </div>
@@ -427,6 +447,7 @@
     // === 1. STATE & DOM ELEMENTS
     // ==========================================
     const fileInput = document.getElementById('file')
+    const presetSelect = document.getElementById('presetSelect')
     const canvas = document.getElementById('canvas')
     canvas.width = 512;
     canvas.height = 512;
@@ -447,6 +468,15 @@
     fileInput.addEventListener('change', function (e) {
         if (e.target.files) {
             targetImg = fileToImage(e.target.files[0])
+            main()
+        }
+    })
+
+    presetSelect.addEventListener('change', function (e) {
+        if (e.target.value !== 'custom') {
+            const img = new Image()
+            img.src = e.target.value
+            targetImg = img
             main()
         }
     })
@@ -635,7 +665,7 @@
             for (let y = 0; y < bufferHeight * 0.707; y++) {
                 const i = (x + y * bufferWidth) * 4;
                 const luma = rawOutputData[i] + rawOutputData[i + 1] + rawOutputData[i + 2];
-                sum += luma * (y / bufferHeight); // Weight by radius
+                sum += luma
             }
             densityProfile[x] = sum;
             sumD += sum;
@@ -947,9 +977,9 @@
             let filterFreq = Math.min(100 + rpm * 1.5, 10000);
             noiseFilter.frequency.setTargetAtTime(filterFreq, audioCtx.currentTime, 0.1);
 
-            let rVol = Math.max(0, 1.0 - (rpm / 200)) * 0.4;
-            let oscVol = Math.min(rpm / 200, 1.0) * 0.5;
-            let noiseVol = Math.min(rpm / 1000, 1.0) * 0.3;
+            let rVol = Math.max(0, 1.0 - (rpm / 200)) * 0.2;
+            let oscVol = Math.min(rpm / 200, 1.0) * 0.6;
+            let noiseVol = Math.min(rpm / 1000, 1.0) * 0.1;
 
             rattleGain.gain.setTargetAtTime(rVol, audioCtx.currentTime, 0.1);
             oscGain.gain.setTargetAtTime(oscVol, audioCtx.currentTime, 0.1);
