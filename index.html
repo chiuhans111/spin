@@ -1010,8 +1010,8 @@
 
 
         // Render.
-        let shutter = isStarted ? deltaAngle * deltaTime * paramShutterMult : 0
-        let rolling = isStarted ? -deltaAngle * deltaTime * paramRollingMult : 0
+        let shutter = deltaAngle * deltaTime * paramShutterMult
+        let rolling = -deltaAngle * deltaTime * paramRollingMult
         if (shutter > 0) {
             gl.uniform1f(u_angle, angle)
         } else {
