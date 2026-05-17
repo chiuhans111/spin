@@ -251,9 +251,10 @@
                 cos(x * 2.0 * PI),
                 sin(x * 2.0 * PI)
             ) * (v_position.y * 0.5) * length(u_texture_size) / u_texture_size + 0.5;
-            c += texture2D(u_texture, polar) / float(SAMPLES);
+            vec4 v = texture2D(u_texture, polar);
+            c += srgb2linear(v) / float(SAMPLES);
         }
-        gl_FragColor = srgb2linear(c);
+        gl_FragColor = c;
     }
 </script>
 <script id="fragmentShaderRender" type="x-shader/x-fragment">
@@ -306,13 +307,13 @@
 
 
     vec4 integral2(float x1, float x2, float y, float norm){
-        float halfx = 0.5/u_texture_size.x;
-        float halfy = 0.5/u_texture_size.y;
+        float halfx = 0.5/u_buffer_size.x;
+        float halfy = 0.5/u_buffer_size.y;
         vec4 prefix0_1 = texture2D(u_prefix0, vec2(x1-halfx, y+halfy));
         vec4 prefix1_1 = texture2D(u_prefix1, vec2(x1-halfx, y+halfy));
         vec4 prefix2_1 = texture2D(u_prefix2, vec2(x1-halfx, y+halfy));
 
-        float px1 = x1*u_texture_size.x;
+        float px1 = x1*u_buffer_size.x;
         if(px1<1.0){
             prefix0_1 *= px1;
             prefix1_1 *= px1;
@@ -323,7 +324,7 @@
         vec4 prefix1_2 = texture2D(u_prefix1, vec2(x2-halfx, y+halfy));
         vec4 prefix2_2 = texture2D(u_prefix2, vec2(x2-halfx, y+halfy));
 
-        float px2 = x2*u_texture_size.x;
+        float px2 = x2*u_buffer_size.x;
         if(px2<1.0){
             prefix0_2 *= px2;
             prefix1_2 *= px2;
@@ -333,7 +334,6 @@
         vec4 diff0 = vec4(prefix0_2 - prefix0_1);
         vec4 diff1 = vec4(prefix1_2 - prefix1_1);
         vec4 diff2 = vec4(prefix2_2 - prefix2_1);
-        //vec4 diff = (diff2*256.0 + diff1)*256.0+diff0;
         vec4 diff = (diff2*64.0 + diff1)*64.0+diff0;
 
         return diff / norm;
@@ -342,7 +342,7 @@
 
     vec4 integral(vec2 p, float l){
         p.x = fract(p.x);
-        float norm = l * u_texture_size.x;
+        float norm = l * u_buffer_size.x;
         vec4 accum = vec4(0);
        
         float laps = floor(l);
@@ -381,8 +381,8 @@
         // c0.r=1.0;
         
         
-        vec4 c = integral(p, max(u_shutter, 1.5/u_texture_size.x));
-        c = mix(c0, c, smoothstep(0.0, 1.0, u_texture_size.x * u_shutter / 5.0 - 1.0));
+        vec4 c = integral(p, max(u_shutter, 1.5/u_buffer_size.x));
+        c = mix(c0, c, smoothstep(0.0, 1.0, u_buffer_size.x * u_shutter / 5.0 - 1.0));
 
         c = linear2srgb(c);
 
@@ -542,7 +542,7 @@
 
         bindIdBuffer(program)
 
-        const bufferWidth = 1024 // Or whatever size > canvas you need!
+        const bufferWidth = 512 // Or whatever size > canvas you need!
         const bufferHeight = Math.ceil(Math.max(canvas.width, canvas.height))
         bindFrameBuffer(bufferWidth, bufferHeight)
 
