@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spin!</title>
+
+    <style>
+        .container {
+            margin: auto;
+            max-width: 760px;
+        }
+
+        /* File Selector */
+        #file::file-selector-button {
+            padding: 0.6em 1.2em;
+            border: none;
+            background-color: #000000;
+            color: white;
+            cursor: pointer;
+        }
+
+        #file::file-selector-button:hover {
+            background-color: rgb(61, 61, 61);
+        }
+    </style>
+</head>
+
+<body>
+
+
+
+    <div class="container">
+
+        <div>
+            <input type="file" id="file" accept="image/png, image/jpeg, image/webp" />
+        </div>
+        <div>
+            <canvas id="canvas"></canvas>
+        </div>
+    </div>
+</body>
+
+
+
+
+<script id="vertexShader" type="x-shader/x-vertex">
+    attribute float a_VertexID; // Pass vertex indices manually as a float
+    varying vec2 v_position;
+    void main() {
+        if(a_VertexID<=2.5)  gl_Position = vec4(-1,3,0,1);
+        if(a_VertexID<=1.5)  gl_Position = vec4(3,-1,0,1);
+        if(a_VertexID<=0.5)  gl_Position = vec4(-1,-1,0,1);
+        v_position = gl_Position.xy * 0.5 + 0.5;
+    }
+</script>
+<script id="fragmentShaderToPolar" type="x-shader/x-fragment">
+    #define PI 3.1415926536
+    precision mediump float;
+    varying vec2 v_position;
+    uniform vec2 u_texture_size;
+    uniform vec2 u_canvas_size;
+    uniform sampler2D u_texture;
+
+    #define SAMPLES 8
+
+    void main(void) {
+        vec4 c = vec4(0);
+        for(int i=0;i<SAMPLES;i++){
+            float x = v_position.x + float(i)/float(SAMPLES)/u_canvas_size.x;
+            vec2 polar = vec2(
+                cos(x * 2.0 * PI),
+                sin(x * 2.0 * PI)
+            ) * v_position.y * length(u_texture_size) / u_texture_size + 0.5;
+            c += texture2D(u_texture, polar) / float(SAMPLES);
+        }
+
+        c.r = pow(c.r, 2.4);
+        c.g = pow(c.g, 2.4);
+        c.b = pow(c.b, 2.4);
+        gl_FragColor = c;
+    }
+</script>
+<script id="fragmentShaderRender" type="x-shader/x-fragment">
+    #define PI 3.1415926536
+    precision mediump float;
+    varying vec2 v_position;
+    uniform vec2 u_texture_size;
+    uniform sampler2D u_prefix0;
+    uniform sampler2D u_prefix1;
+    uniform sampler2D u_prefix2;
+    uniform vec2 u_canvas_size;
+
+    uniform float u_angle;
+    uniform float u_shutter;
+    uniform float u_rolling;
+
+
+    vec4 integral2(float x1, float x2, float y, float norm){
+        float halfx = 0.5/u_texture_size.x;
+        float halfy = 0.5/u_texture_size.y;
+        vec4 prefix0_1 = texture2D(u_prefix0, vec2(x1-halfx, y+halfy));
+        vec4 prefix1_1 = texture2D(u_prefix1, vec2(x1-halfx, y+halfy));
+        vec4 prefix2_1 = texture2D(u_prefix2, vec2(x1-halfx, y+halfy));
+
+        float px1 = x1*u_texture_size.x;
+        if(px1<1.0){
+            prefix0_1 *= px1;
+            prefix1_1 *= px1;
+            prefix2_1 *= px1;
+        }
+
+        vec4 prefix0_2 = texture2D(u_prefix0, vec2(x2-halfx, y+halfy));
+        vec4 prefix1_2 = texture2D(u_prefix1, vec2(x2-halfx, y+halfy));
+        vec4 prefix2_2 = texture2D(u_prefix2, vec2(x2-halfx, y+halfy));
+
+        float px2 = x2*u_texture_size.x;
+        if(px2<1.0){
+            prefix0_2 *= px2;
+            prefix1_2 *= px2;
+            prefix2_2 *= px2;
+        }
+
+        vec4 diff0 = vec4(prefix0_2 - prefix0_1);
+        vec4 diff1 = vec4(prefix1_2 - prefix1_1);
+        vec4 diff2 = vec4(prefix2_2 - prefix2_1);
+        //vec4 diff = (diff2*256.0 + diff1)*256.0+diff0;
+        vec4 diff = (diff2*64.0 + diff1)*64.0+diff0;
+
+        return diff / norm;
+
+    }
+
+    vec4 integral(vec2 p, float l){
+        p.x = fract(p.x);
+        float norm = l * u_texture_size.x;
+        vec4 accum = vec4(0);
+       
+        float laps = floor(l);
+        float f = fract(l);
+        float x0 = p.x-f;
+        float fx0 = fract(x0);
+        accum += integral2(fx0, p.x, p.y, norm);
+        if(fx0>x0) laps+=1.0;
+        accum += laps * integral2(0.0, 2.0, p.y, norm);
+        return accum;
+    }
+
+    void main(void) {
+        vec2 uv = (v_position - 0.5) / max(u_canvas_size.x, u_canvas_size.y) * u_canvas_size;
+        vec2 p = vec2(
+            fract(atan(uv.y, uv.x)/PI*0.5 + u_angle + u_rolling * uv.y),
+            length(uv)/sqrt(2.0)
+        );
+
+        vec4 c = integral(p, max(u_shutter, 1.0/u_texture_size.x));
+
+        c.r = pow(c.r, 1.0/2.4);
+        c.g = pow(c.g, 1.0/2.4);
+        c.b = pow(c.b, 1.0/2.4);
+        gl_FragColor = vec4(c);
+
+    }
+</script>
+<script>
+    // spin things!
+    const fileInput = document.getElementById('file')
+    const canvas = document.getElementById('canvas')
+    canvas.width = 512;
+    canvas.height = 512;
+    /**@type {WebGLRenderingContext}*/
+    const gl = canvas.getContext('webgl')
+
+    // Set Image and call main().
+    let targetImg = document.createElement('img')
+    targetImg.src = './sample.png'
+
+    // Image file input.
+    function fileToImage(file) {
+        const img = new Image()
+        img.src = URL.createObjectURL(file)
+        return img
+    }
+
+    fileInput.addEventListener('change', function (e) {
+        if (e.target.files) {
+            targetImg = fileToImage(e.target.files[0])
+            main()
+        }
+    })
+
+    async function imageReady(img) {
+        if (img.complete) return img
+        return new Promise(done => img.addEventListener('load', _ => done(img)))
+    }
+
+    function imageToTexture(img) {
+        const texture = gl.createTexture()
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, false);
+        gl.bindTexture(gl.TEXTURE_2D, texture)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+        return texture
+    }
+
+    // Shader helper functions.
+
+    function loadShaderFromSource(type, source) {
+        const shader = gl.createShader(type)
+        gl.shaderSource(shader, source)
+        gl.compileShader(shader)
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.log(gl.getShaderInfoLog(shader))
+            gl.deleteShader(shader)
+            return null
+        }
+        return shader
+    }
+
+    function loadShaderFromId(type, id) {
+        const source = document.getElementById(id).textContent
+        return loadShaderFromSource(type, source)
+    }
+
+
+    function createShaderProgram(vertId, fragId) {
+        const program = gl.createProgram()
+        gl.attachShader(program, loadShaderFromId(gl.VERTEX_SHADER, vertId))
+        gl.attachShader(program, loadShaderFromId(gl.FRAGMENT_SHADER, fragId))
+        gl.linkProgram(program)
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.log(gl.getProgramInfoLog(program))
+            gl.deleteProgram(program)
+            return null
+        }
+        return program
+    }
+
+    // Main.
+    async function setupTargetTexture() {
+        await imageReady(targetImg)
+        const texture = imageToTexture(targetImg)
+        const imageScale = 600 / Math.max(targetImg.naturalWidth, targetImg.naturalHeight)
+        canvas.width = Math.round(targetImg.naturalWidth * imageScale)
+        canvas.height = Math.round(targetImg.naturalHeight * imageScale)
+        return texture
+    }
+
+    function bindIdBuffer(program) {
+        // Bind Buffer.
+        const idBuffer = gl.createBuffer()
+        gl.bindBuffer(gl.ARRAY_BUFFER, idBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0.0, 1.0, 2.0]), gl.STATIC_DRAW)
+        const a_VertexID = gl.getAttribLocation(program, "a_VertexID")
+        gl.enableVertexAttribArray(a_VertexID)
+        gl.vertexAttribPointer(
+            /*index=*/a_VertexID,  /*size=*/1, /*type=*/gl.FLOAT,
+            /*normalized=*/false, /*stride=*/0, /*offset=*/0
+        )
+    }
+
+    function bindFrameBuffer(bufferWidth, bufferHeight) {
+        const fb = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb); // Corrected target
+        const offscreenTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, offscreenTexture);
+        gl.texImage2D(
+            gl.TEXTURE_2D, 0, gl.RGBA, bufferWidth, bufferHeight,
+            0, gl.RGBA, gl.UNSIGNED_BYTE, null
+        );
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.framebufferTexture2D(
+            gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, offscreenTexture, 0
+        );
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+
+    function bindTexture(program, name, texture, i = 0) {
+        gl.activeTexture(gl.TEXTURE0 + i)
+        gl.bindTexture(gl.TEXTURE_2D, texture)
+        const u_texture = gl.getUniformLocation(program, name)
+        gl.uniform1i(u_texture, i)
+    }
+
+
+    let u_angle, u_shutter, u_rolling;
+
+    async function main() {
+        const texture = await setupTargetTexture()
+
+        const program = createShaderProgram('vertexShader', 'fragmentShaderToPolar')
+        gl.useProgram(program)
+
+        bindIdBuffer(program)
+
+        const bufferWidth = 1024 // Or whatever size > canvas you need!
+        const bufferHeight = Math.ceil(Math.max(canvas.width, canvas.height))
+        bindFrameBuffer(bufferWidth, bufferHeight)
+
+        // Bind Texture.
+        bindTexture(program, "u_texture", texture, 0)
+
+        // Update uniform.
+        gl.uniform2f(gl.getUniformLocation(program, "u_texture_size"),
+            targetImg.naturalWidth, targetImg.naturalHeight)
+        gl.uniform2f(gl.getUniformLocation(program, "u_canvas_size"),
+            bufferWidth, bufferHeight)
+
+        // Render.
+        gl.viewport(0, 0, bufferWidth, bufferHeight);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0)
+        gl.clearDepth(1.0)
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+        gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
+
+
+        // Get output.
+        const rawOutputData = new Uint8Array(bufferWidth * bufferHeight * 4)
+        gl.readPixels(0, 0, bufferWidth, bufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, rawOutputData)
+        console.log(rawOutputData)
+
+        // Build prefix integration table
+        const prefix0 = new Uint8Array(bufferWidth * bufferHeight * 4)
+        const prefix1 = new Uint8Array(bufferWidth * bufferHeight * 4)
+        const prefix2 = new Uint8Array(bufferWidth * bufferHeight * 4)
+        for (let y = 0; y < bufferHeight; y++) {
+            const prefixSum = new Int32Array(4);
+            for (let x = 0; x < bufferWidth; x++) {
+                for (let c = 0; c < 4; c++) {
+                    const i = (x + y * bufferWidth) * 4
+                    prefixSum[c] += rawOutputData[i + c];
+                    prefix0[i + c] = (prefixSum[c] % 64)
+                    prefix1[i + c] = ((prefixSum[c] >> 6) % 64)
+                    prefix2[i + c] = ((prefixSum[c] >> 12) % 64)
+                    // prefix2[i + c] = rawOutputData[i + c]
+                }
+            }
+
+            if (y == bufferHeight - 1) {
+                const r = Math.round(Math.pow(prefixSum[0] / bufferHeight / 255, 1 / 2.4) * 255)
+                const g = Math.round(Math.pow(prefixSum[1] / bufferHeight / 255, 1 / 2.4) * 255)
+                const b = Math.round(Math.pow(prefixSum[2] / bufferHeight / 255, 1 / 2.4) * 255)
+                const a = prefixSum[3] / bufferHeight / 255
+                document.body.style.backgroundColor = "rgba(" + r + "," + g + "," + b + "," + a + ")"
+            }
+        }
+
+
+        // Reset framebuffer.
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+
+        // Stage two.
+        const program2 = createShaderProgram('vertexShader', 'fragmentShaderRender')
+        gl.useProgram(program2)
+
+        // Create Textures
+        const prefixTextures = [
+            gl.createTexture(),
+            gl.createTexture(),
+            gl.createTexture(),
+        ]
+
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+
+        for (let i = 0; i < 3; i++) {
+            const prefixArray = [
+                prefix0, prefix1, prefix2
+            ][i]
+            gl.activeTexture([gl.TEXTURE0, gl.TEXTURE1, gl.TEXTURE2][i])
+
+            gl.bindTexture(gl.TEXTURE_2D, prefixTextures[i])
+            gl.texImage2D(
+                gl.TEXTURE_2D, 0, gl.RGBA, bufferWidth, bufferHeight,
+                0, gl.RGBA, gl.UNSIGNED_BYTE, prefixArray
+            )
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+        }
+
+
+        // Bind Textures
+        for (let i = 0; i < 3; i++) {
+            bindTexture(program2, "u_prefix" + i, prefixTextures[i], i)
+        }
+
+        // Update uniform.
+        gl.uniform2f(gl.getUniformLocation(program2, "u_texture_size"),
+            bufferWidth, bufferHeight)
+        gl.uniform2f(gl.getUniformLocation(program2, "u_canvas_size"),
+            canvas.width, canvas.height)
+
+
+        u_angle = gl.getUniformLocation(program2, "u_angle")
+        u_shutter = gl.getUniformLocation(program2, "u_shutter")
+        u_rolling = gl.getUniformLocation(program2, "u_rolling")
+
+        angle = 0
+        deltaAngle = 0.0
+    }
+
+    let angle = 0
+    let deltaAngle = 0.0
+
+    let prevTime = NaN
+
+    function update() {
+        setTimeout(update, 1000 / 60);
+        // requestAnimationFrame(update)
+        let time = Date.now()
+        let deltaTime = (time - prevTime) / 1000
+        prevTime = time
+        if (!deltaTime) return
+
+
+        // Set uniform.
+        deltaAngle += 0.05 * deltaTime
+
+        angle += deltaAngle
+
+        let shutter = deltaAngle * 0.3
+
+        gl.uniform1f(u_angle, angle)
+        gl.uniform1f(u_shutter, Math.abs(shutter))
+        gl.uniform1f(u_rolling, -deltaAngle)
+
+        // Render.
+        gl.clearColor(0.0, 0.0, 0.0, 0.0)
+        gl.clearDepth(1.0)
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+        gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
+
+    }
+
+
+    main()
+
+    update()
+
+
+
+
+</script>
