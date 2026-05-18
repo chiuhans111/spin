@@ -873,9 +873,7 @@
         if (isStarted) {
             isStarted = false;
             playBtn.innerHTML = svgPlay;
-            if (audioCtx && audioCtx.state === 'running') {
-                audioCtx.suspend();
-            }
+            suspendAudioGracefully();
         }
         angle = 0
         deltaAngle = 0.0
@@ -891,14 +889,9 @@
         playBtn.innerHTML = isStarted ? svgPause : svgPlay;
 
         if (isStarted) {
-            initAudio();
-            if (audioCtx && audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
+            resumeAudioGracefully();
         } else {
-            if (audioCtx && audioCtx.state === 'running') {
-                audioCtx.suspend();
-            }
+            suspendAudioGracefully();
         }
     });
 
@@ -975,6 +968,44 @@
     let noiseGain = null;
     let masterGain = null;
     let globalWaveData = null;
+    let suspendTimeout = null;
+
+    function suspendAudioGracefully() {
+        if (!audioCtx || audioCtx.state !== 'running') return;
+
+        if (suspendTimeout) {
+            clearTimeout(suspendTimeout);
+        }
+
+        const now = audioCtx.currentTime;
+        masterGain.gain.cancelScheduledValues(now);
+        masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+        masterGain.gain.linearRampToValueAtTime(0, now + 0.1);
+
+        suspendTimeout = setTimeout(() => {
+            if (!isStarted && audioCtx && audioCtx.state === 'running') {
+                audioCtx.suspend();
+            }
+            suspendTimeout = null;
+        }, 150);
+    }
+
+    function resumeAudioGracefully() {
+        if (suspendTimeout) {
+            clearTimeout(suspendTimeout);
+            suspendTimeout = null;
+        }
+
+        initAudio();
+        if (!audioCtx) return;
+
+        if (audioCtx.state === 'suspended') {
+            const now = audioCtx.currentTime;
+            masterGain.gain.cancelScheduledValues(now);
+            masterGain.gain.setValueAtTime(0, now);
+            audioCtx.resume();
+        }
+    }
 
     function updateAudioBuffer() {
         if (!audioCtx || !globalWaveData) return;
