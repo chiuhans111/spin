@@ -562,9 +562,10 @@
     }
 
     fileInput.addEventListener('change', function (e) {
-        if (e.target.files) {
+        if (e.target.files && e.target.files[0]) {
             targetImg = fileToImage(e.target.files[0])
             main()
+            fileInput.value = ''
         }
     })
 
@@ -575,6 +576,7 @@
             presetSelect.value = 'custom'
             targetImg = img
             main()
+            fileInput.value = ''
         }
     })
 
