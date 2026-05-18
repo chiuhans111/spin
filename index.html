@@ -65,6 +65,7 @@
         }
 
         .canvas-container {
+            position: relative;
             flex: 1;
             display: flex;
             justify-content: center;
@@ -74,12 +75,17 @@
             height: 100%;
         }
 
-        canvas {
+        canvas, #overlayCanvas {
             width: 100%;
             height: 100%;
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            pointer-events: auto;
         }
 
         /* Buttons */
@@ -228,6 +234,7 @@
 
         <div class="canvas-container">
             <canvas id="canvas"></canvas>
+            <canvas id="overlayCanvas"></canvas>
         </div>
         <div class="controls">
             <div class="control-group">
@@ -257,6 +264,21 @@
                         <option value="24">24 FPS</option>
                     </select>
                 </div>
+            </div>
+
+            <div class="control-group">
+                <label for="debugSelect">Debug View</label>
+                <select id="debugSelect" style="flex: 2;">
+                    <option value="0">View 0: Normal Simulation Render</option>
+                    <option value="1">View 1: Raw SAT Buffer 0 (Low bits)</option>
+                    <option value="2">View 2: Raw SAT Buffer 1 (Mid bits)</option>
+                    <option value="3">View 3: Raw SAT Buffer 2 (High bits)</option>
+                    <option value="4">View 4: Debug Dashboard (Split View)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="showGrid">Polar Grid</label>
+                <input type="checkbox" id="showGrid" style="width: 20px; height: 20px; accent-color: #fff; margin: 0; cursor: pointer;">
             </div>
 
 
@@ -300,6 +322,55 @@
                               d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
                     </svg></button>
             </div>
+            <!-- Interactive Architecture & Math Specs -->
+            <details style="background: rgba(0,0,0,0.4); padding: 10px; border-radius: 4px; margin-top: 10px; cursor: pointer; border: 1px solid rgba(255,255,255,0.1);">
+                <summary style="font-weight: 600; font-size: 0.9em; color: #00ffcc; outline: none; user-select: none;">Architectural Blueprint & Math Specs</summary>
+                <div style="font-family: monospace; font-size: 0.75em; line-height: 1.4; color: rgba(255,255,255,0.85); margin-top: 10px; cursor: default; white-space: pre-wrap; overflow-x: auto;">
+<strong>1. THE DUAL-SPACE INTEGRATION PRINCIPLE</strong>
+To render dynamic motion blur, rather than running loops that sample points along the path, we precompute three horizontally-integrated Summed-Area Table (SAT) buffers:
+
+$$\int_{A}^{B} f(\theta) \, d\theta = F(B) - F(A)$$
+
+A curved integration path of width &Delta;&theta; centered on the spinning disk translates to a single O(1) constant-time straight horizontal lookup at height r in our unrolled Polar target!
+
+<strong>2. 18-BIT BASE-64 ACCUMULATION BITMASK</strong>
+Because standard WebGL fallback channels only handle 8 bits (0-255), a running sum across 1024 columns overflows instantly. We splice the accumulation sum across three channels:
+- <b>u_prefix2</b>: High 6 bits (macroscopic illumination ramps)
+- <b>u_prefix1</b>: Mid 6 bits (structural gradience rows)
+- <b>u_prefix0</b>: Low 6 bits (high-frequency sawtooth fringe)
+Reconstruction formula inside shader:
+<code>val = (prefix2 * 4096.0 + prefix1 * 64.0 + prefix0) / norm;</code>
+
+<strong>3. AUDIO DSP SIGNAL FLOW</strong>
+<pre style="background: rgba(0,0,0,0.5); padding: 5px; border-radius: 2px; color: #ffcc00; border: 1px solid rgba(255,255,255,0.05); font-size: 0.9em; margin: 5px 0 0 0;">
+                    +----------------------------------+
+                    |       PHYSICS ENGINE (RPM)       |
+                    +----------------------------------+
+                     /              |                 \
+        Scales PlaybackRate         |            Modulates Frequency
+                   /                |                   \
+                  v                 v                    v
++---------------------+    +-------------------+    +-------------------+
+|  PATH 1: WAVEFORM   |    | PATH 2: RESONANCE |    |   PATH 3: NOISE   |
+|  AudioBufferSource  |    | (Mechanical Hum)  |    | (Wind & Air Flow) |
+|  (Custom Wavetable) |    |  Wavetable Tap    |    |  White Noise Src  |
++---------------------+    +-------------------+    +-------------------+
+          |                         |                        |
+          |                  [BiquadFilter]           [BiquadFilter]
+          |                  Bandpass: 250Hz          Lowpass Dynamic
+          |                    High Q: 10.0           Freq = f(RPM)
+          v                         v                        v
+    [ GainNode ]               [ GainNode ]             [ GainNode ]
+   Vol = f(Ramp)              Vol = f(Rolling)         Vol = f(Shutter)
+          \                         |                        /
+           \                        v                       /
+            +----------------> [ MASTER GAIN ] &lt;-----------+
+                                    |
+                                    v
+                           [ AUDIO DESTINATION ]
+</pre>
+                </div>
+            </details>
         </div>
     </div>
 </body>
@@ -488,11 +559,37 @@
     // ==========================================
     const fileInput = document.getElementById('file')
     const presetSelect = document.getElementById('presetSelect')
+    const debugSelect = document.getElementById('debugSelect')
+    const showGrid = document.getElementById('showGrid')
     const canvas = document.getElementById('canvas')
+    const overlayCanvas = document.getElementById('overlayCanvas')
     canvas.width = 512;
     canvas.height = 512;
     /**@type {WebGLRenderingContext}*/
     const gl = canvas.getContext('webgl')
+
+    let program2 = null;
+    let prefixTextures = null;
+    let texture = null;
+    let offscreenTexture = null;
+    let programBlit = null;
+    let u_blitTextureLocation = null;
+    let paramDebugMode = 0;
+    let paramShowGrid = false;
+    let currentAngle = 0;
+    let currentShutter = 0;
+    let currentRolling = 0;
+    let hoverCoords = null;
+
+    // Lightweight 5-line Blit Fragment Shader Source
+    const fragmentShaderBlitSource = `
+        precision mediump float;
+        varying vec2 v_position;
+        uniform sampler2D u_texture;
+        void main() {
+            gl_FragColor = texture2D(u_texture, v_position);
+        }
+    `;
 
     // Set Image and call main().
     let targetImg = document.createElement('img')
@@ -632,7 +729,7 @@
     function bindFrameBuffer(bufferWidth, bufferHeight) {
         const fb = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb); // Corrected target
-        const offscreenTexture = gl.createTexture();
+        offscreenTexture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, offscreenTexture);
         gl.texImage2D(
             gl.TEXTURE_2D, 0, gl.RGBA, bufferWidth, bufferHeight,
@@ -673,7 +770,11 @@
     let u_angle, u_shutter, u_rolling;
 
     async function main() {
-        const texture = await setupTargetTexture()
+        texture = await setupTargetTexture()
+
+        // Synchronize overlay canvas dimensions
+        overlayCanvas.width = canvas.width;
+        overlayCanvas.height = canvas.height;
 
         const program = createShaderProgram('vertexShader', 'fragmentShaderToPolar')
         gl.useProgram(program)
@@ -683,6 +784,19 @@
         const bufferWidth = 1024 // Or whatever size > canvas you need!
         const bufferHeight = Math.ceil(Math.max(canvas.width, canvas.height))
         bindFrameBuffer(bufferWidth, bufferHeight)
+
+        // Compile and link programBlit
+        const blitFragShader = loadShaderFromSource(gl.FRAGMENT_SHADER, fragmentShaderBlitSource)
+        const vertShader = loadShaderFromId(gl.VERTEX_SHADER, 'vertexShader')
+        programBlit = gl.createProgram()
+        gl.attachShader(programBlit, vertShader)
+        gl.attachShader(programBlit, blitFragShader)
+        gl.linkProgram(programBlit)
+        if (!gl.getProgramParameter(programBlit, gl.LINK_STATUS)) {
+            console.error(gl.getProgramInfoLog(programBlit))
+        }
+        u_blitTextureLocation = gl.getUniformLocation(programBlit, "u_texture")
+        bindIdBuffer(programBlit)
 
         // Bind Texture.
         bindTexture(program, "u_texture", texture, 0)
@@ -764,11 +878,11 @@
         gl.viewport(0, 0, canvas.width, canvas.height);
 
         // Stage two.
-        const program2 = createShaderProgram('vertexShader', 'fragmentShaderRender')
+        program2 = createShaderProgram('vertexShader', 'fragmentShaderRender')
         gl.useProgram(program2)
 
         // Create Textures
-        const prefixTextures = [
+        prefixTextures = [
             gl.createTexture(),
             gl.createTexture(),
             gl.createTexture(),
@@ -867,6 +981,304 @@
     maxrpmInput.addEventListener('input', updateParams)
     shutterMultInput.addEventListener('input', updateParams)
     rollingMultInput.addEventListener('input', updateParams)
+
+    debugSelect.addEventListener('change', (e) => {
+        paramDebugMode = parseInt(e.target.value);
+    });
+
+    showGrid.addEventListener('change', (e) => {
+        paramShowGrid = e.target.checked;
+    });
+
+    // Helper to calculate mouse coordinates inside letterboxed canvas
+    function getRelativeMouseCoords(e) {
+        const rect = overlayCanvas.getBoundingClientRect();
+        const containerAspect = rect.width / rect.height;
+        const canvasAspect = overlayCanvas.width / overlayCanvas.height;
+        
+        let activeWidth, activeHeight, offsetX, offsetY;
+        if (containerAspect > canvasAspect) {
+            activeHeight = rect.height;
+            activeWidth = activeHeight * canvasAspect;
+            offsetX = (rect.width - activeWidth) / 2;
+            offsetY = 0;
+        } else {
+            activeWidth = rect.width;
+            activeHeight = activeWidth / canvasAspect;
+            offsetX = 0;
+            offsetY = (rect.height - activeHeight) / 2;
+        }
+        
+        const clientX = e.clientX - rect.left - offsetX;
+        const clientY = e.clientY - rect.top - offsetY;
+        
+        const x = (clientX / activeWidth) * overlayCanvas.width;
+        const y = (clientY / activeHeight) * overlayCanvas.height;
+        
+        return {
+            x,
+            y,
+            inside: x >= 0 && x <= overlayCanvas.width && y >= 0 && y <= overlayCanvas.height
+        };
+    }
+
+    overlayCanvas.addEventListener('mousemove', (e) => {
+        hoverCoords = getRelativeMouseCoords(e);
+    });
+
+    overlayCanvas.addEventListener('mouseleave', () => {
+        hoverCoords = null;
+    });
+
+    // Complete real-time vector overlay drawing
+    function drawOverlay() {
+        const ctx = overlayCanvas.getContext('2d');
+        const w = overlayCanvas.width;
+        const h = overlayCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        // 1. Draw Grid
+        if (paramShowGrid) {
+            let cx, cy, R;
+            if (paramDebugMode === 4) {
+                cx = w / 4;
+                cy = h / 2;
+                R = Math.min(w / 2, h) / 2;
+            } else {
+                cx = w / 2;
+                cy = h / 2;
+                R = Math.min(w, h) / 2;
+            }
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = 1;
+            // Concentric rings
+            for (let r = 0.2; r <= 1.0; r += 0.2) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, r * R, 0, 2 * Math.PI);
+                ctx.stroke();
+            }
+            // Radial angle lines
+            for (let deg = 0; deg < 360; deg += 30) {
+                const rad = deg * Math.PI / 180;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + R * Math.cos(rad), cy + R * Math.sin(rad));
+                ctx.stroke();
+            }
+        }
+
+        // 2. Dashboard Plot in View 4
+        if (paramDebugMode === 4) {
+            ctx.fillStyle = '#141414';
+            ctx.fillRect(w / 2, h / 2, w / 2, h / 2);
+            
+            if (globalWaveData) {
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                
+                const startX = w / 2;
+                const plotW = w / 2;
+                const startY = h / 2;
+                const plotH = h / 2;
+                
+                for (let i = 0; i < globalWaveData.length; i++) {
+                    const x = startX + (i / (globalWaveData.length - 1)) * plotW;
+                    const val = globalWaveData[i];
+                    const y = startY + plotH / 2 - (val * (plotH / 2 - 15));
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+                
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(w / 2, h / 2, w / 2, h / 2);
+                ctx.strokeRect(w / 2, 0, w / 2, h / 2);
+                
+                ctx.font = '10px monospace';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.fillText("PANEL C: ACOUSTIC WAVEFORM PLOT", w / 2 + 10, h - 10);
+                ctx.fillText("PANEL B: UNROLLED POLAR SPACE (\u03b8, r)", w / 2 + 10, 20);
+                ctx.fillText("PANEL A: CARTESIAN INPUT SPACE", 10, 20);
+            }
+        }
+
+        // 3. Bidirectional Hover Inspector
+        if (hoverCoords && hoverCoords.inside) {
+            const vx = hoverCoords.x / w;
+            const vy = 1.0 - (hoverCoords.y / h);
+            
+            let px = 0;
+            let py = 0;
+            let showInspection = false;
+            
+            if (paramDebugMode === 4) {
+                if (vx < 0.5) {
+                    const localVx = vx * 2.0;
+                    const localVy = vy;
+                    
+                    const cx = w / 2;
+                    const cy = h;
+                    const lengthCanvasSize = Math.sqrt(cx * cx + cy * cy);
+                    const uvX = (localVx - 0.5) / lengthCanvasSize * cx * 2.0;
+                    const uvY = (localVy - 0.5) / lengthCanvasSize * cy * 2.0;
+                    
+                    py = Math.sqrt(uvX * uvX + uvY * uvY);
+                    const rawAngle = Math.atan2(uvY, uvX) / Math.PI * 0.5;
+                    px = ((rawAngle + currentAngle + currentRolling * uvY) % 1.0 + 1.0) % 1.0;
+                    showInspection = true;
+                }
+                else if (vx >= 0.5 && vy >= 0.5) {
+                    px = (vx - 0.5) * 2.0;
+                    py = (vy - 0.5) * 2.0;
+                    showInspection = true;
+                }
+            } else if (paramDebugMode === 0 || paramDebugMode === 1 || paramDebugMode === 2 || paramDebugMode === 3) {
+                const cx = w;
+                const cy = h;
+                const lengthCanvasSize = Math.sqrt(cx * cx + cy * cy);
+                const uvX = (vx - 0.5) / lengthCanvasSize * cx * 2.0;
+                const uvY = (vy - 0.5) / lengthCanvasSize * cy * 2.0;
+                
+                py = Math.sqrt(uvX * uvX + uvY * uvY);
+                const rawAngle = Math.atan2(uvY, uvX) / Math.PI * 0.5;
+                px = ((rawAngle + currentAngle + currentRolling * uvY) % 1.0 + 1.0) % 1.0;
+                showInspection = true;
+            }
+            
+            if (showInspection && py <= 1.2) {
+                const shutterVal = Math.abs(currentShutter);
+                
+                let mainCx, mainCy, mainR;
+                if (paramDebugMode === 4) {
+                    mainCx = w / 4;
+                    mainCy = h / 2;
+                    mainR = Math.min(w / 2, h) / 2;
+                } else {
+                    mainCx = w / 2;
+                    mainCy = h / 2;
+                    mainR = Math.min(w, h) / 2;
+                }
+                
+                function getScreenAngle(x, r, u_angle, u_rolling) {
+                    let theta = 2 * Math.PI * (x - u_angle);
+                    for (let iter = 0; iter < 5; iter++) {
+                        theta = 2 * Math.PI * (x - u_angle - u_rolling * r * Math.sin(theta));
+                    }
+                    return theta;
+                }
+                
+                ctx.strokeStyle = '#00ffcc';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                const SAMPLES = 30;
+                
+                let startPoint = null;
+                let endPoint = null;
+                
+                for (let i = 0; i <= SAMPLES; i++) {
+                    const samplePx = px - (i / SAMPLES) * shutterVal;
+                    const theta = getScreenAngle(samplePx, py, currentAngle, currentRolling);
+                    
+                    const uvX = py * Math.cos(theta);
+                    const uvY = py * Math.sin(theta);
+                    
+                    let cxSize = (paramDebugMode === 4) ? w / 2 : w;
+                    let cySize = h;
+                    const lenCanvas = Math.sqrt(cxSize * cxSize + cySize * cySize);
+                    
+                    const sVx = uvX * lenCanvas / (cxSize * 2.0) + 0.5;
+                    const sVy = uvY * lenCanvas / (cySize * 2.0) + 0.5;
+                    
+                    let drawX = sVx * cxSize;
+                    let drawY = (1.0 - sVy) * cySize;
+                    
+                    if (i === 0) {
+                        ctx.moveTo(drawX, drawY);
+                        endPoint = { x: drawX, y: drawY };
+                    } else {
+                        ctx.lineTo(drawX, drawY);
+                    }
+                    
+                    if (i === SAMPLES) {
+                        startPoint = { x: drawX, y: drawY };
+                    }
+                }
+                ctx.stroke();
+                
+                if (startPoint && endPoint) {
+                    ctx.fillStyle = '#ff3366';
+                    ctx.beginPath();
+                    ctx.arc(startPoint.x, startPoint.y, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#33ccff';
+                    ctx.beginPath();
+                    ctx.arc(endPoint.x, endPoint.y, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+                
+                if (paramDebugMode === 4) {
+                    const startX = w / 2;
+                    const endX = w;
+                    const startY = 0;
+                    const endY = h / 2;
+                    
+                    const polarY = endY - py * (endY - startY);
+                    const px1 = px - shutterVal;
+                    const px2 = px;
+                    
+                    ctx.strokeStyle = '#00ffcc';
+                    ctx.lineWidth = 2.5;
+                    
+                    const x1 = startX + (px1 % 1.0 + 1.0) % 1.0 * (endX - startX);
+                    const x2 = startX + (px2 % 1.0 + 1.0) % 1.0 * (endX - startX);
+                    
+                    ctx.beginPath();
+                    if (x1 <= x2) {
+                        ctx.moveTo(x1, polarY);
+                        ctx.lineTo(x2, polarY);
+                    } else {
+                        ctx.moveTo(x1, polarY);
+                        ctx.lineTo(endX, polarY);
+                        ctx.moveTo(startX, polarY);
+                        ctx.lineTo(x2, polarY);
+                    }
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = '#ff3366';
+                    ctx.beginPath();
+                    ctx.arc(x1, polarY, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#33ccff';
+                    ctx.beginPath();
+                    ctx.arc(x2, polarY, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    const xWave = startX + (px % 1.0) * (endX - startX);
+                    ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(xWave, h / 2);
+                    ctx.lineTo(xWave, h);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '10px monospace';
+                    ctx.fillText(`\u03b8: ${px.toFixed(3)} r: ${py.toFixed(3)}`, w / 2 + 10, h / 2 - 10);
+                }
+            }
+        }
+    }
 
     resetBtn.addEventListener('click', () => {
         // Stop play
@@ -1174,17 +1586,90 @@
         // Render.
         let shutter = deltaAngle * deltaTime * paramShutterMult
         let rolling = -deltaAngle * deltaTime * paramRollingMult
-        if (shutter > 0) {
-            gl.uniform1f(u_angle, angle)
-        } else {
-            gl.uniform1f(u_angle, angle - shutter)
+        
+        currentAngle = angle;
+        currentShutter = shutter;
+        currentRolling = rolling;
+
+        // Synchronize overlay canvas dimension
+        if (overlayCanvas.width !== canvas.width || overlayCanvas.height !== canvas.height) {
+            overlayCanvas.width = canvas.width;
+            overlayCanvas.height = canvas.height;
         }
-        gl.uniform1f(u_shutter, Math.abs(shutter))
-        gl.uniform1f(u_rolling, rolling)
+
         gl.clearColor(0.0, 0.0, 0.0, 0.0)
         gl.clearDepth(1.0)
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-        gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
+
+        if (paramDebugMode === 0) {
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.useProgram(program2)
+            
+            // Re-bind textures for program2
+            for (let i = 0; i < 3; i++) {
+                bindTexture(program2, "u_prefix" + i, prefixTextures[i], i)
+            }
+            bindTexture(program2, "u_texture", texture, 3)
+
+            gl.uniform2f(gl.getUniformLocation(program2, "u_canvas_size"), canvas.width, canvas.height)
+            if (shutter > 0) {
+                gl.uniform1f(u_angle, angle)
+            } else {
+                gl.uniform1f(u_angle, angle - shutter)
+            }
+            gl.uniform1f(u_shutter, Math.abs(shutter))
+            gl.uniform1f(u_rolling, rolling)
+            gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
+        }
+        else if (paramDebugMode >= 1 && paramDebugMode <= 3) {
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.useProgram(programBlit)
+            
+            bindIdBuffer(programBlit)
+            gl.activeTexture(gl.TEXTURE0)
+            gl.bindTexture(gl.TEXTURE_2D, prefixTextures[paramDebugMode - 1])
+            gl.uniform1i(u_blitTextureLocation, 0)
+            
+            gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
+        }
+        else if (paramDebugMode === 4) {
+            // [Panel A - Left Half]
+            gl.viewport(0, 0, canvas.width / 2, canvas.height);
+            gl.useProgram(program2)
+            
+            // Re-bind textures for program2
+            for (let i = 0; i < 3; i++) {
+                bindTexture(program2, "u_prefix" + i, prefixTextures[i], i)
+            }
+            bindTexture(program2, "u_texture", texture, 3)
+
+            // CRITICAL: Pass (canvas.width / 2, canvas.height) into u_canvas_size to keep circle round!
+            gl.uniform2f(gl.getUniformLocation(program2, "u_canvas_size"), canvas.width / 2, canvas.height)
+            if (shutter > 0) {
+                gl.uniform1f(u_angle, angle)
+            } else {
+                gl.uniform1f(u_angle, angle - shutter)
+            }
+            gl.uniform1f(u_shutter, Math.abs(shutter))
+            gl.uniform1f(u_rolling, rolling)
+            gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
+
+            // [Panel B - Top Right]
+            gl.viewport(canvas.width / 2, canvas.height / 2, canvas.width / 2, canvas.height / 2);
+            gl.useProgram(programBlit)
+            
+            bindIdBuffer(programBlit)
+            gl.activeTexture(gl.TEXTURE0)
+            gl.bindTexture(gl.TEXTURE_2D, offscreenTexture)
+            gl.uniform1i(u_blitTextureLocation, 0)
+            
+            gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
+
+            // [Panel C - Bottom Right]: left unrendered by WebGL
+        }
+
+        // Draw 2D Vector Overlay
+        drawOverlay();
 
     }
 
