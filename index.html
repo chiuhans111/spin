@@ -266,19 +266,15 @@
                 </div>
             </div>
 
-            <div class="control-group">
-                <label for="debugSelect">Debug View</label>
-                <select id="debugSelect" style="flex: 2;">
-                    <option value="0">View 0: Normal Simulation Render</option>
-                    <option value="1">View 1: Raw SAT Buffer 0 (Low bits)</option>
-                    <option value="2">View 2: Raw SAT Buffer 1 (Mid bits)</option>
-                    <option value="3">View 3: Raw SAT Buffer 2 (High bits)</option>
-                    <option value="4">View 4: Debug Dashboard (Split View)</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label for="showGrid">Polar Grid</label>
-                <input type="checkbox" id="showGrid" style="width: 20px; height: 20px; accent-color: #fff; margin: 0; cursor: pointer;">
+            <!-- Hidden diagnostic console unlocked via secret backdoor -->
+            <div id="debugControls" style="display: none; flex-direction: column; gap: 8px; border: 1px solid rgba(0,255,204,0.25); background: rgba(0,255,204,0.05); padding: 10px; border-radius: 4px; margin-top: 10px;">
+                <div style="font-size: 0.85em; font-weight: bold; color: #00ffcc; text-shadow: 0 0 4px rgba(0,255,204,0.3); font-family: monospace;">
+                    DIAGNOSTICS CONSOLE UNLOCKED
+                </div>
+                <div class="control-group" style="margin: 0; padding: 4px 0; border: none; display: flex; align-items: center; justify-content: space-between;">
+                    <label for="showGrid" style="cursor: pointer; font-size: 0.85em; color: #ccc;">Show Polar Grid</label>
+                    <input type="checkbox" id="showGrid" style="width: 18px; height: 18px; accent-color: #00ffcc; margin: 0; cursor: pointer;">
+                </div>
             </div>
 
 
@@ -322,55 +318,6 @@
                               d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
                     </svg></button>
             </div>
-            <!-- Interactive Architecture & Math Specs -->
-            <details style="background: rgba(0,0,0,0.4); padding: 10px; border-radius: 4px; margin-top: 10px; cursor: pointer; border: 1px solid rgba(255,255,255,0.1);">
-                <summary style="font-weight: 600; font-size: 0.9em; color: #00ffcc; outline: none; user-select: none;">Architectural Blueprint & Math Specs</summary>
-                <div style="font-family: monospace; font-size: 0.75em; line-height: 1.4; color: rgba(255,255,255,0.85); margin-top: 10px; cursor: default; white-space: pre-wrap; overflow-x: auto;">
-<strong>1. THE DUAL-SPACE INTEGRATION PRINCIPLE</strong>
-To render dynamic motion blur, rather than running loops that sample points along the path, we precompute three horizontally-integrated Summed-Area Table (SAT) buffers:
-
-$$\int_{A}^{B} f(\theta) \, d\theta = F(B) - F(A)$$
-
-A curved integration path of width &Delta;&theta; centered on the spinning disk translates to a single O(1) constant-time straight horizontal lookup at height r in our unrolled Polar target!
-
-<strong>2. 18-BIT BASE-64 ACCUMULATION BITMASK</strong>
-Because standard WebGL fallback channels only handle 8 bits (0-255), a running sum across 1024 columns overflows instantly. We splice the accumulation sum across three channels:
-- <b>u_prefix2</b>: High 6 bits (macroscopic illumination ramps)
-- <b>u_prefix1</b>: Mid 6 bits (structural gradience rows)
-- <b>u_prefix0</b>: Low 6 bits (high-frequency sawtooth fringe)
-Reconstruction formula inside shader:
-<code>val = (prefix2 * 4096.0 + prefix1 * 64.0 + prefix0) / norm;</code>
-
-<strong>3. AUDIO DSP SIGNAL FLOW</strong>
-<pre style="background: rgba(0,0,0,0.5); padding: 5px; border-radius: 2px; color: #ffcc00; border: 1px solid rgba(255,255,255,0.05); font-size: 0.9em; margin: 5px 0 0 0;">
-                    +----------------------------------+
-                    |       PHYSICS ENGINE (RPM)       |
-                    +----------------------------------+
-                     /              |                 \
-        Scales PlaybackRate         |            Modulates Frequency
-                   /                |                   \
-                  v                 v                    v
-+---------------------+    +-------------------+    +-------------------+
-|  PATH 1: WAVEFORM   |    | PATH 2: RESONANCE |    |   PATH 3: NOISE   |
-|  AudioBufferSource  |    | (Mechanical Hum)  |    | (Wind & Air Flow) |
-|  (Custom Wavetable) |    |  Wavetable Tap    |    |  White Noise Src  |
-+---------------------+    +-------------------+    +-------------------+
-          |                         |                        |
-          |                  [BiquadFilter]           [BiquadFilter]
-          |                  Bandpass: 250Hz          Lowpass Dynamic
-          |                    High Q: 10.0           Freq = f(RPM)
-          v                         v                        v
-    [ GainNode ]               [ GainNode ]             [ GainNode ]
-   Vol = f(Ramp)              Vol = f(Rolling)         Vol = f(Shutter)
-          \                         |                        /
-           \                        v                       /
-            +----------------> [ MASTER GAIN ] &lt;-----------+
-                                    |
-                                    v
-                           [ AUDIO DESTINATION ]
-</pre>
-                </div>
-            </details>
         </div>
     </div>
 </body>
@@ -559,7 +506,7 @@ Reconstruction formula inside shader:
     // ==========================================
     const fileInput = document.getElementById('file')
     const presetSelect = document.getElementById('presetSelect')
-    const debugSelect = document.getElementById('debugSelect')
+    const debugControls = document.getElementById('debugControls')
     const showGrid = document.getElementById('showGrid')
     const canvas = document.getElementById('canvas')
     const overlayCanvas = document.getElementById('overlayCanvas')
@@ -574,12 +521,24 @@ Reconstruction formula inside shader:
     let offscreenTexture = null;
     let programBlit = null;
     let u_blitTextureLocation = null;
-    let paramDebugMode = 0;
+    let debugUnlocked = false;
+    let activeSATOverlay = -1; // -1 = offscreenTexture, 0/1/2 = u_prefix0/1/2
     let paramShowGrid = false;
     let currentAngle = 0;
     let currentShutter = 0;
     let currentRolling = 0;
     let hoverCoords = null;
+
+    let analyserOsc = null;
+    let analyserNoise = null;
+    let analyserRes = null;
+    let analyserCombined = null;
+
+    const historyLength = 22050; // 0.5s at 44100Hz
+    let historyOsc = new Float32Array(historyLength);
+    let historyNoise = new Float32Array(historyLength);
+    let historyRes = new Float32Array(historyLength);
+    let historyCombined = new Float32Array(historyLength);
 
     // Lightweight 5-line Blit Fragment Shader Source
     const fragmentShaderBlitSource = `
@@ -982,13 +941,98 @@ Reconstruction formula inside shader:
     shutterMultInput.addEventListener('input', updateParams)
     rollingMultInput.addEventListener('input', updateParams)
 
-    debugSelect.addEventListener('change', (e) => {
-        paramDebugMode = parseInt(e.target.value);
-    });
+    // 5-click secret backdoor trigger on RPM label
+    let infoClickTimes = []
+    function playDiagnosticUnlockSound() {
+        try {
+            const ctx = audioCtx || new (window.AudioContext || window.webkitAudioContext)()
+            const osc1 = ctx.createOscillator()
+            const osc2 = ctx.createOscillator()
+            const gainNode = ctx.createGain()
+            
+            osc1.type = 'sine'
+            osc2.type = 'triangle'
+            
+            osc1.frequency.setValueAtTime(880, ctx.currentTime)
+            osc1.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.15)
+            
+            osc2.frequency.setValueAtTime(440, ctx.currentTime)
+            osc2.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15)
+            
+            gainNode.gain.setValueAtTime(0.08, ctx.currentTime)
+            gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25)
+            
+            osc1.connect(gainNode)
+            osc2.connect(gainNode)
+            gainNode.connect(destination || ctx.destination)
+            
+            osc1.start()
+            osc2.start()
+            osc1.stop(ctx.currentTime + 0.25)
+            osc2.stop(ctx.currentTime + 0.25)
+        } catch (e) {
+            console.log("Audio feedback failed: ", e)
+        }
+    }
+
+    let clickCount = 0
+    let clickTimeout
+    let openedGitHubWindow = null
+
+    info.addEventListener('click', (e) => {
+        clickCount++
+        
+        // Clear the previous redirection timer
+        clearTimeout(clickTimeout)
+        
+        if (clickCount === 5) {
+            clickCount = 0
+            debugUnlocked = !debugUnlocked
+            
+            if (debugUnlocked) {
+                debugControls.style.display = 'flex'
+                info.style.color = '#00ffcc'
+                info.style.textShadow = '0 0 8px rgba(0,255,204,0.8)'
+                playDiagnosticUnlockSound()
+            } else {
+                debugControls.style.display = 'none'
+                info.style.color = ''
+                info.style.textShadow = ''
+            }
+            if (openedGitHubWindow && !openedGitHubWindow.closed) {
+                openedGitHubWindow.close();
+            }
+            return
+        }
+        
+        // If 300ms pass without another click, treat it as a single intent to view GitHub
+        clickTimeout = setTimeout(() => {
+            clickCount = 0
+            openedGitHubWindow = window.open('https://github.com/chiuhans111/spin', '_blank')
+        }, 300)
+    })
 
     showGrid.addEventListener('change', (e) => {
-        paramShowGrid = e.target.checked;
-    });
+        paramShowGrid = e.target.checked
+    })
+
+    // Keyboard-based SAT overlay cycling
+    window.addEventListener('keydown', (e) => {
+        if (debugUnlocked) {
+            if (e.key === '1') activeSATOverlay = 0
+            else if (e.key === '2') activeSATOverlay = 1
+            else if (e.key === '3') activeSATOverlay = 2
+            else if (e.key === '0') activeSATOverlay = -1
+        }
+    })
+
+    window.addEventListener('keyup', (e) => {
+        if (debugUnlocked) {
+            if (e.key === '1' || e.key === '2' || e.key === '3') {
+                activeSATOverlay = -1
+            }
+        }
+    })
 
     // Helper to calculate mouse coordinates inside letterboxed canvas
     function getRelativeMouseCoords(e) {
@@ -1022,13 +1066,102 @@ Reconstruction formula inside shader:
         };
     }
 
+    let isMouseDown = false;
+    let activeInspection = null;
+
+    overlayCanvas.addEventListener('mousedown', (e) => {
+        isMouseDown = true;
+        updateInspectionCoords(e);
+    });
+
+    overlayCanvas.addEventListener('mouseup', () => {
+        isMouseDown = false;
+    });
+
     overlayCanvas.addEventListener('mousemove', (e) => {
         hoverCoords = getRelativeMouseCoords(e);
+        if (isMouseDown) {
+            updateInspectionCoords(e);
+        }
     });
 
     overlayCanvas.addEventListener('mouseleave', () => {
         hoverCoords = null;
+        isMouseDown = false;
     });
+
+    overlayCanvas.addEventListener('dblclick', () => {
+        activeInspection = null;
+    });
+
+    function updateInspectionCoords(e) {
+        if (!debugUnlocked) return;
+        const coords = getRelativeMouseCoords(e);
+        if (!coords.inside) return;
+        const w = overlayCanvas.width;
+        const h = overlayCanvas.height;
+        const vx = coords.x / w;
+        const vy = 1.0 - (coords.y / h);
+        
+        let px = 0;
+        let py = 0;
+        let valid = false;
+        let source = '';
+        let lockedX = 0;
+        let lockedY = 0;
+        
+        // Hover inside Panel A (Top Left Cartesian Dynamic)
+        if (vx < 0.5 && vy >= 0.5) {
+            const localVx = vx * 2.0;
+            const localVy = (vy - 0.5) * 2.0;
+            
+            const cx = w / 2;
+            const cy = h / 2;
+            const lengthCanvasSize = Math.sqrt(cx * cx + cy * cy);
+            
+            lockedX = (localVx - 0.5) / lengthCanvasSize * cx * 2.0;
+            lockedY = (localVy - 0.5) / lengthCanvasSize * cy * 2.0;
+            
+            py = Math.sqrt(lockedX * lockedX + lockedY * lockedY);
+            const rawAngle = Math.atan2(lockedY, lockedX) / Math.PI * 0.5;
+            px = ((rawAngle + currentAngle + currentRolling * lockedY) % 1.0 + 1.0) % 1.0;
+            
+            source = 'A';
+            valid = true;
+        }
+        // Hover inside Panel C (Bottom Left Cartesian Stationary)
+        else if (vx < 0.5 && vy < 0.5) {
+            const localVx = vx * 2.0;
+            const localVy = vy * 2.0;
+            
+            const cx = w / 2;
+            const cy = h / 2;
+            const lengthCanvasSize = Math.sqrt(cx * cx + cy * cy);
+            
+            lockedX = (localVx - 0.5) / lengthCanvasSize * cx * 2.0;
+            lockedY = (localVy - 0.5) / lengthCanvasSize * cy * 2.0;
+            
+            py = Math.sqrt(lockedX * lockedX + lockedY * lockedY);
+            const rawAngle = Math.atan2(lockedY, lockedX) / Math.PI * 0.5;
+            px = (rawAngle % 1.0 + 1.0) % 1.0;
+            
+            source = 'C';
+            valid = true;
+        }
+        // Hover inside Panel B (Top Right - Stacked Bands)
+        else if (vx >= 0.5 && vy >= 0.5) {
+            const localVy = (vy - 0.5) * 2.0;
+            const bandOffset = (localVy * 4.0) % 1.0;
+            py = bandOffset;
+            px = (vx - 0.5) * 2.0;
+            source = 'B';
+            valid = true;
+        }
+        
+        if (valid && py <= 1.2) {
+            activeInspection = { source, lockedX, lockedY, px, py };
+        }
+    }
 
     // Complete real-time vector overlay drawing
     function drawOverlay() {
@@ -1037,246 +1170,403 @@ Reconstruction formula inside shader:
         const h = overlayCanvas.height;
         ctx.clearRect(0, 0, w, h);
 
-        // 1. Draw Grid
+        if (!debugUnlocked) {
+            return;
+        }
+
+        // 1. Draw Polar Grids inside Cartesian Quadrants
         if (paramShowGrid) {
-            let cx, cy, R;
-            if (paramDebugMode === 4) {
-                cx = w / 4;
-                cy = h / 2;
-                R = Math.min(w / 2, h) / 2;
-            } else {
-                cx = w / 2;
-                cy = h / 2;
-                R = Math.min(w, h) / 2;
-            }
-            
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
             ctx.lineWidth = 1;
-            // Concentric rings
-            for (let r = 0.2; r <= 1.0; r += 0.2) {
-                ctx.beginPath();
-                ctx.arc(cx, cy, r * R, 0, 2 * Math.PI);
-                ctx.stroke();
-            }
-            // Radial angle lines
-            for (let deg = 0; deg < 360; deg += 30) {
-                const rad = deg * Math.PI / 180;
-                ctx.beginPath();
-                ctx.moveTo(cx, cy);
-                ctx.lineTo(cx + R * Math.cos(rad), cy + R * Math.sin(rad));
-                ctx.stroke();
-            }
+            const R = Math.min(w / 2, h / 2) / 2;
+
+            // Quadrant A Center: (w / 4, h / 4)
+            const cx1 = w / 4;
+            const cy1 = h / 4;
+            // Quadrant C Center: (w / 4, 3 * h / 4)
+            const cx2 = w / 4;
+            const cy2 = 3 * h / 4;
+
+            [ [cx1, cy1], [cx2, cy2] ].forEach(([cx, cy]) => {
+                // Concentric rings
+                for (let r = 0.2; r <= 1.0; r += 0.2) {
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r * R, 0, 2 * Math.PI);
+                    ctx.stroke();
+                }
+                // Radial lines
+                for (let deg = 0; deg < 360; deg += 30) {
+                    const rad = deg * Math.PI / 180;
+                    ctx.beginPath();
+                    ctx.moveTo(cx, cy);
+                    ctx.lineTo(cx + R * Math.cos(rad), cy + R * Math.sin(rad));
+                    ctx.stroke();
+                }
+            });
         }
 
-        // 2. Dashboard Plot in View 4
-        if (paramDebugMode === 4) {
-            ctx.fillStyle = '#141414';
-            ctx.fillRect(w / 2, h / 2, w / 2, h / 2);
+        // 2. Visual dividing grid lines between the 4 Quadrants
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0, 0, w, h);
+        ctx.beginPath();
+        ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h);
+        ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2);
+        ctx.stroke();
+
+        // 3. Draw horizontal dividing lines and text labels in Panel B (Top Right quadrant)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        for (let b = 1; b < 4; b++) {
+            ctx.beginPath();
+            ctx.moveTo(w / 2, b * h / 8);
+            ctx.lineTo(w, b * h / 8);
+            ctx.stroke();
+        }
+        ctx.font = '9px monospace';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.fillText("POLAR EXPANDED IMAGE", w / 2 + 10, 15);
+        ctx.fillText("SAT u_prefix0 (LOW FREQ)", w / 2 + 10, h / 8 + 15);
+        ctx.fillText("SAT u_prefix1 (MID FREQ)", w / 2 + 10, 2 * h / 8 + 15);
+        ctx.fillText("SAT u_prefix2 (HIGH FREQ)", w / 2 + 10, 3 * h / 8 + 15);
+
+        // 4. Panel D - Real-time 5-Track Laboratory Oscilloscope
+        const startX = w / 2;
+        const plotW = w / 2;
+        const startY = h / 2;
+        const plotH = h / 2;
+
+        ctx.fillStyle = '#111111';
+        ctx.fillRect(startX, startY, plotW, plotH);
+
+        // Draw track horizontal zero-axes and dividing lines
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1;
+        for (let t = 1; t < 5; t++) {
+            ctx.beginPath();
+            ctx.moveTo(startX, startY + t * h / 10);
+            ctx.lineTo(w, startY + t * h / 10);
+            ctx.stroke();
+        }
+
+        // Render Track 1: Spatial Polar wavetable profile
+        if (globalWaveData) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            const centerY1 = startY + h / 20;
+            const amp1 = h / 25;
+            for (let i = 0; i < globalWaveData.length; i++) {
+                const x = startX + (i / (globalWaveData.length - 1)) * plotW;
+                const y = centerY1 - globalWaveData[i] * amp1;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        // Render Track 2: Real-time Wavetable source
+        ctx.strokeStyle = '#ff3366';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        const centerY2 = startY + 3 * h / 20;
+        const amp2 = h / 25;
+        const steps = 512;
+        for (let i = 0; i < steps; i++) {
+            const idx = Math.floor((i / (steps - 1)) * (historyLength - 1));
+            const x = startX + (i / (steps - 1)) * plotW;
+            const y = centerY2 - historyOsc[idx] * amp2;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Render Track 3: Real-time Resonance
+        ctx.strokeStyle = '#33ccff';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        const centerY3 = startY + 5 * h / 20;
+        const amp3 = h / 25;
+        for (let i = 0; i < steps; i++) {
+            const idx = Math.floor((i / (steps - 1)) * (historyLength - 1));
+            const x = startX + (i / (steps - 1)) * plotW;
+            const y = centerY3 - historyRes[idx] * amp3;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Render Track 4: Real-time Lowpass Noise
+        ctx.strokeStyle = '#ffcc00';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        const centerY4 = startY + 7 * h / 20;
+        const amp4 = h / 25;
+        for (let i = 0; i < steps; i++) {
+            const idx = Math.floor((i / (steps - 1)) * (historyLength - 1));
+            const x = startX + (i / (steps - 1)) * plotW;
+            const y = centerY4 - historyNoise[idx] * amp4;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Render Track 5: Real-time Combined Output
+        ctx.strokeStyle = '#00ffcc';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        const centerY5 = startY + 9 * h / 20;
+        const amp5 = h / 25;
+        for (let i = 0; i < steps; i++) {
+            const idx = Math.floor((i / (steps - 1)) * (historyLength - 1));
+            const x = startX + (i / (steps - 1)) * plotW;
+            const y = centerY5 - historyCombined[idx] * amp5;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Minimal track labels inside Panel D
+        ctx.font = '8px monospace';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.fillText("SPATIAL POLAR PROFILE", startX + 10, startY + 12);
+        ctx.fillStyle = '#ff3366';
+        ctx.fillText("REAL-TIME SYNTH HUM", startX + 10, startY + h / 10 + 12);
+        ctx.fillStyle = '#33ccff';
+        ctx.fillText("RESONANCE (250Hz BP)", startX + 10, startY + 2 * h / 10 + 12);
+        ctx.fillStyle = '#ffcc00';
+        ctx.fillText("NOISE FLOW (LOWPASS)", startX + 10, startY + 3 * h / 10 + 12);
+        ctx.fillStyle = '#00ffcc';
+        ctx.fillText("COMBINED MASTER MIX", startX + 10, startY + 4 * h / 10 + 12);
+
+        // HUD Header text labels in the 4 Quadrants
+        ctx.font = '10px monospace';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.fillText("PANEL A: ACTIVE CARTESIAN SIMULATION", 15, 20);
+        ctx.fillText("PANEL B: MULTI-BUFFER STACKED INTEGRATION BUFFER", startX + 15, 20);
+        ctx.fillText("PANEL C: STATIC CARTESIAN INPUT (NO BLUR)", 15, startY + 20);
+        ctx.fillText("PANEL D: 5-TRACK LABORATORY OSCILLOSCOPE (0.5s)", startX + 15, startY + 20);
+
+        // 5. Symmetrical Inspection Path Rendering
+        if (activeInspection) {
+            const shutterVal = Math.abs(currentShutter);
             
-            if (globalWaveData) {
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                
-                const startX = w / 2;
-                const plotW = w / 2;
-                const startY = h / 2;
-                const plotH = h / 2;
-                
-                for (let i = 0; i < globalWaveData.length; i++) {
-                    const x = startX + (i / (globalWaveData.length - 1)) * plotW;
-                    const val = globalWaveData[i];
-                    const y = startY + plotH / 2 - (val * (plotH / 2 - 15));
-                    
-                    if (i === 0) {
-                        ctx.moveTo(x, y);
-                    } else {
-                        ctx.lineTo(x, y);
-                    }
+            function getScreenAngle(x, r, u_angle, u_rolling) {
+                let theta = 2 * Math.PI * (x - u_angle);
+                for (let iter = 0; iter < 5; iter++) {
+                    theta = 2 * Math.PI * (x - u_angle - u_rolling * r * Math.sin(theta));
                 }
-                ctx.stroke();
+                return theta;
+            }
+            
+            const SAMPLES = 40;
+            
+            let px = activeInspection.px;
+            let py = activeInspection.py;
+            
+            // Reconstruct dynamic parameters if source is A or C
+            if (activeInspection.source === 'A') {
+                const theta_screen = Math.atan2(activeInspection.lockedY, activeInspection.lockedX);
+                const rawAngle = (theta_screen / (2 * Math.PI) % 1.0 + 1.0) % 1.0;
+                px = ((rawAngle + currentAngle + currentRolling * activeInspection.lockedY) % 1.0 + 1.0) % 1.0;
+            } else if (activeInspection.source === 'C') {
+                const theta_original = Math.atan2(activeInspection.lockedY, activeInspection.lockedX);
+                const rawAngle = (theta_original / (2 * Math.PI) % 1.0 + 1.0) % 1.0;
+                px = (rawAngle + currentAngle) % 1.0;
+            }
+            
+            // --- DRAW ON PANEL A (Active Cartesian Dynamic) ---
+            let startPointA = null;
+            let endPointA = null;
+            
+            if (activeInspection.source === 'A') {
+                // Rendered screen point is stationary: draw single fixed target dot and crosshair on Panel A
+                let cxSize = w / 2;
+                let cySize = h / 2;
+                const lenCanvas = Math.sqrt(cxSize * cxSize + cySize * cySize);
                 
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                const sVx = activeInspection.lockedX * lenCanvas / (cxSize * 2.0) + 0.5;
+                const sVy = activeInspection.lockedY * lenCanvas / (cySize * 2.0) + 0.5;
+                
+                let drawX = sVx * cxSize;
+                let drawY = h / 2 - sVy * cySize;
+                
+                ctx.fillStyle = '#00ffcc';
+                ctx.beginPath(); ctx.arc(drawX, drawY, 5, 0, 2 * Math.PI); ctx.fill();
+                
+                ctx.strokeStyle = '#00ffcc';
                 ctx.lineWidth = 1;
-                ctx.strokeRect(w / 2, h / 2, w / 2, h / 2);
-                ctx.strokeRect(w / 2, 0, w / 2, h / 2);
-                
-                ctx.font = '10px monospace';
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                ctx.fillText("PANEL C: ACOUSTIC WAVEFORM PLOT", w / 2 + 10, h - 10);
-                ctx.fillText("PANEL B: UNROLLED POLAR SPACE (\u03b8, r)", w / 2 + 10, 20);
-                ctx.fillText("PANEL A: CARTESIAN INPUT SPACE", 10, 20);
-            }
-        }
-
-        // 3. Bidirectional Hover Inspector
-        if (hoverCoords && hoverCoords.inside) {
-            const vx = hoverCoords.x / w;
-            const vy = 1.0 - (hoverCoords.y / h);
-            
-            let px = 0;
-            let py = 0;
-            let showInspection = false;
-            
-            if (paramDebugMode === 4) {
-                if (vx < 0.5) {
-                    const localVx = vx * 2.0;
-                    const localVy = vy;
-                    
-                    const cx = w / 2;
-                    const cy = h;
-                    const lengthCanvasSize = Math.sqrt(cx * cx + cy * cy);
-                    const uvX = (localVx - 0.5) / lengthCanvasSize * cx * 2.0;
-                    const uvY = (localVy - 0.5) / lengthCanvasSize * cy * 2.0;
-                    
-                    py = Math.sqrt(uvX * uvX + uvY * uvY);
-                    const rawAngle = Math.atan2(uvY, uvX) / Math.PI * 0.5;
-                    px = ((rawAngle + currentAngle + currentRolling * uvY) % 1.0 + 1.0) % 1.0;
-                    showInspection = true;
-                }
-                else if (vx >= 0.5 && vy >= 0.5) {
-                    px = (vx - 0.5) * 2.0;
-                    py = (vy - 0.5) * 2.0;
-                    showInspection = true;
-                }
-            } else if (paramDebugMode === 0 || paramDebugMode === 1 || paramDebugMode === 2 || paramDebugMode === 3) {
-                const cx = w;
-                const cy = h;
-                const lengthCanvasSize = Math.sqrt(cx * cx + cy * cy);
-                const uvX = (vx - 0.5) / lengthCanvasSize * cx * 2.0;
-                const uvY = (vy - 0.5) / lengthCanvasSize * cy * 2.0;
-                
-                py = Math.sqrt(uvX * uvX + uvY * uvY);
-                const rawAngle = Math.atan2(uvY, uvX) / Math.PI * 0.5;
-                px = ((rawAngle + currentAngle + currentRolling * uvY) % 1.0 + 1.0) % 1.0;
-                showInspection = true;
-            }
-            
-            if (showInspection && py <= 1.2) {
-                const shutterVal = Math.abs(currentShutter);
-                
-                let mainCx, mainCy, mainR;
-                if (paramDebugMode === 4) {
-                    mainCx = w / 4;
-                    mainCy = h / 2;
-                    mainR = Math.min(w / 2, h) / 2;
-                } else {
-                    mainCx = w / 2;
-                    mainCy = h / 2;
-                    mainR = Math.min(w, h) / 2;
-                }
-                
-                function getScreenAngle(x, r, u_angle, u_rolling) {
-                    let theta = 2 * Math.PI * (x - u_angle);
-                    for (let iter = 0; iter < 5; iter++) {
-                        theta = 2 * Math.PI * (x - u_angle - u_rolling * r * Math.sin(theta));
-                    }
-                    return theta;
-                }
-                
+                ctx.beginPath();
+                ctx.moveTo(drawX - 8, drawY); ctx.lineTo(drawX + 8, drawY);
+                ctx.moveTo(drawX, drawY - 8); ctx.lineTo(drawX, drawY + 8);
+                ctx.stroke();
+            } else {
+                // Clicked bottom left: draw dynamic scatter sweep of where the stationary original pixel goes
                 ctx.strokeStyle = '#00ffcc';
                 ctx.lineWidth = 2.5;
                 ctx.beginPath();
-                const SAMPLES = 30;
                 
-                let startPoint = null;
-                let endPoint = null;
+                const theta_original = Math.atan2(activeInspection.lockedY, activeInspection.lockedX);
+                const samplePxBase = (theta_original / (2 * Math.PI) % 1.0 + 1.0) % 1.0;
                 
                 for (let i = 0; i <= SAMPLES; i++) {
-                    const samplePx = px - (i / SAMPLES) * shutterVal;
-                    const theta = getScreenAngle(samplePx, py, currentAngle, currentRolling);
+                    const x_exposed = samplePxBase + (i / SAMPLES) * shutterVal;
+                    const theta = getScreenAngle(x_exposed, py, currentAngle, currentRolling);
                     
                     const uvX = py * Math.cos(theta);
                     const uvY = py * Math.sin(theta);
                     
-                    let cxSize = (paramDebugMode === 4) ? w / 2 : w;
-                    let cySize = h;
+                    let cxSize = w / 2;
+                    let cySize = h / 2;
                     const lenCanvas = Math.sqrt(cxSize * cxSize + cySize * cySize);
                     
                     const sVx = uvX * lenCanvas / (cxSize * 2.0) + 0.5;
                     const sVy = uvY * lenCanvas / (cySize * 2.0) + 0.5;
                     
                     let drawX = sVx * cxSize;
-                    let drawY = (1.0 - sVy) * cySize;
+                    let drawY = h / 2 - sVy * cySize;
                     
                     if (i === 0) {
                         ctx.moveTo(drawX, drawY);
-                        endPoint = { x: drawX, y: drawY };
+                        endPointA = { x: drawX, y: drawY };
                     } else {
                         ctx.lineTo(drawX, drawY);
                     }
                     
                     if (i === SAMPLES) {
-                        startPoint = { x: drawX, y: drawY };
+                        startPointA = { x: drawX, y: drawY };
                     }
                 }
                 ctx.stroke();
                 
-                if (startPoint && endPoint) {
+                if (startPointA && endPointA) {
                     ctx.fillStyle = '#ff3366';
-                    ctx.beginPath();
-                    ctx.arc(startPoint.x, startPoint.y, 5, 0, 2 * Math.PI);
-                    ctx.fill();
+                    ctx.beginPath(); ctx.arc(startPointA.x, startPointA.y, 4, 0, 2 * Math.PI); ctx.fill();
                     
                     ctx.fillStyle = '#33ccff';
-                    ctx.beginPath();
-                    ctx.arc(endPoint.x, endPoint.y, 5, 0, 2 * Math.PI);
-                    ctx.fill();
-                }
-                
-                if (paramDebugMode === 4) {
-                    const startX = w / 2;
-                    const endX = w;
-                    const startY = 0;
-                    const endY = h / 2;
-                    
-                    const polarY = endY - py * (endY - startY);
-                    const px1 = px - shutterVal;
-                    const px2 = px;
-                    
-                    ctx.strokeStyle = '#00ffcc';
-                    ctx.lineWidth = 2.5;
-                    
-                    const x1 = startX + (px1 % 1.0 + 1.0) % 1.0 * (endX - startX);
-                    const x2 = startX + (px2 % 1.0 + 1.0) % 1.0 * (endX - startX);
-                    
-                    ctx.beginPath();
-                    if (x1 <= x2) {
-                        ctx.moveTo(x1, polarY);
-                        ctx.lineTo(x2, polarY);
-                    } else {
-                        ctx.moveTo(x1, polarY);
-                        ctx.lineTo(endX, polarY);
-                        ctx.moveTo(startX, polarY);
-                        ctx.lineTo(x2, polarY);
-                    }
-                    ctx.stroke();
-                    
-                    ctx.fillStyle = '#ff3366';
-                    ctx.beginPath();
-                    ctx.arc(x1, polarY, 5, 0, 2 * Math.PI);
-                    ctx.fill();
-                    
-                    ctx.fillStyle = '#33ccff';
-                    ctx.beginPath();
-                    ctx.arc(x2, polarY, 5, 0, 2 * Math.PI);
-                    ctx.fill();
-                    
-                    const xWave = startX + (px % 1.0) * (endX - startX);
-                    ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
-                    ctx.lineWidth = 1;
-                    ctx.setLineDash([4, 4]);
-                    ctx.beginPath();
-                    ctx.moveTo(xWave, h / 2);
-                    ctx.lineTo(xWave, h);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                    
-                    ctx.fillStyle = '#ffffff';
-                    ctx.font = '10px monospace';
-                    ctx.fillText(`\u03b8: ${px.toFixed(3)} r: ${py.toFixed(3)}`, w / 2 + 10, h / 2 - 10);
+                    ctx.beginPath(); ctx.arc(endPointA.x, endPointA.y, 4, 0, 2 * Math.PI); ctx.fill();
                 }
             }
+            
+            // --- DRAW ON PANEL C (Stationary Cartesian Baseline) ---
+            let startPointC = null;
+            let endPointC = null;
+            
+            if (activeInspection.source === 'C') {
+                // Static original pixel is stationary: draw single fixed target dot and crosshair on Panel C
+                let cxSize = w / 2;
+                let cySize = h / 2;
+                const lenCanvas = Math.sqrt(cxSize * cxSize + cySize * cySize);
+                
+                const sVx = activeInspection.lockedX * lenCanvas / (cxSize * 2.0) + 0.5;
+                const sVy = activeInspection.lockedY * lenCanvas / (cySize * 2.0) + 0.5;
+                
+                let drawX = sVx * cxSize;
+                let drawY = h - sVy * cySize;
+                
+                ctx.fillStyle = '#ff3366';
+                ctx.beginPath(); ctx.arc(drawX, drawY, 5, 0, 2 * Math.PI); ctx.fill();
+                
+                ctx.strokeStyle = '#ff3366';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(drawX - 8, drawY); ctx.lineTo(drawX + 8, drawY);
+                ctx.moveTo(drawX, drawY - 8); ctx.lineTo(drawX, drawY + 8);
+                ctx.stroke();
+            } else {
+                // Clicked top left: draw arc of original pixels contributing to that screen pixel
+                ctx.strokeStyle = '#00ffcc';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                
+                const theta_screen = Math.atan2(activeInspection.lockedY, activeInspection.lockedX);
+                
+                for (let i = 0; i <= SAMPLES; i++) {
+                    const theta_original = theta_screen + 2 * Math.PI * (currentAngle + currentRolling * activeInspection.lockedY - (i / SAMPLES) * shutterVal);
+                    
+                    const uvX = py * Math.cos(theta_original);
+                    const uvY = py * Math.sin(theta_original);
+                    
+                    let cxSize = w / 2;
+                    let cySize = h / 2;
+                    const lenCanvas = Math.sqrt(cxSize * cxSize + cySize * cySize);
+                    
+                    const sVx = uvX * lenCanvas / (cxSize * 2.0) + 0.5;
+                    const sVy = uvY * lenCanvas / (cySize * 2.0) + 0.5;
+                    
+                    let drawX = sVx * cxSize;
+                    let drawY = h - sVy * cySize;
+                    
+                    if (i === 0) {
+                        ctx.moveTo(drawX, drawY);
+                        endPointC = { x: drawX, y: drawY };
+                    } else {
+                        ctx.lineTo(drawX, drawY);
+                    }
+                    
+                    if (i === SAMPLES) {
+                        startPointC = { x: drawX, y: drawY };
+                    }
+                }
+                ctx.stroke();
+                
+                if (startPointC && endPointC) {
+                    ctx.fillStyle = '#ff3366';
+                    ctx.beginPath(); ctx.arc(startPointC.x, startPointC.y, 4, 0, 2 * Math.PI); ctx.fill();
+                    
+                    ctx.fillStyle = '#33ccff';
+                    ctx.beginPath(); ctx.arc(endPointC.x, endPointC.y, 4, 0, 2 * Math.PI); ctx.fill();
+                }
+            }
+            
+            // --- DRAW ON PANEL B (Multi-band Highlights) ---
+            const bStartX = w / 2;
+            const bEndX = w;
+            const bandHeight = h / 8;
+            
+            const px1 = px - shutterVal;
+            const px2 = px;
+            const x1 = bStartX + (px1 % 1.0 + 1.0) % 1.0 * (bEndX - bStartX);
+            const x2 = bStartX + (px2 % 1.0 + 1.0) % 1.0 * (bEndX - bStartX);
+            
+            ctx.strokeStyle = '#00ffcc';
+            ctx.lineWidth = 2;
+            
+            for (let b = 0; b < 4; b++) {
+                const polarY = b * bandHeight + bandHeight * (1.0 - py);
+                ctx.beginPath();
+                if (x1 <= x2) {
+                    ctx.moveTo(x1, polarY);
+                    ctx.lineTo(x2, polarY);
+                } else {
+                    ctx.moveTo(x1, polarY);
+                    ctx.lineTo(bEndX, polarY);
+                    ctx.moveTo(bStartX, polarY);
+                    ctx.lineTo(x2, polarY);
+                }
+                ctx.stroke();
+                
+                ctx.fillStyle = '#ff3366';
+                ctx.beginPath(); ctx.arc(x1, polarY, 3.5, 0, 2 * Math.PI); ctx.fill();
+                
+                ctx.fillStyle = '#33ccff';
+                ctx.beginPath(); ctx.arc(x2, polarY, 3.5, 0, 2 * Math.PI); ctx.fill();
+            }
+            
+            // --- PROJECT TIMING DOWN INTO PANEL D ---
+            const xWave = startX + (px % 1.0) * (w / 2);
+            ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(xWave, h / 2);
+            ctx.lineTo(xWave, h);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '10px monospace';
+            ctx.fillText(`\u03b8: ${px.toFixed(3)} r: ${py.toFixed(3)}`, w / 2 + 15, h / 2 - 10);
         }
     }
 
@@ -1312,9 +1602,7 @@ Reconstruction formula inside shader:
         muteBtn.innerHTML = isMuted ? svgMute : svgUnmute;
     });
 
-    info.addEventListener('click', () => {
-        window.open('https://github.com/chiuhans111/spin', '_blank');
-    });
+
 
     recordBtn.addEventListener('click', () => {
         if (mediaRecorder && mediaRecorder.state === 'recording') {
@@ -1470,14 +1758,26 @@ Reconstruction formula inside shader:
 
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+        analyserOsc = audioCtx.createAnalyser();
+        analyserNoise = audioCtx.createAnalyser();
+        analyserRes = audioCtx.createAnalyser();
+        analyserCombined = audioCtx.createAnalyser();
+        
+        analyserOsc.fftSize = 2048;
+        analyserNoise.fftSize = 2048;
+        analyserRes.fftSize = 2048;
+        analyserCombined.fftSize = 2048;
+
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 0;
-        masterGain.connect(audioCtx.destination);
+        masterGain.connect(analyserCombined);
+        analyserCombined.connect(audioCtx.destination);
 
         // Direct continuous hum path
         oscGain = audioCtx.createGain();
         oscGain.gain.value = 0.0;
-        oscGain.connect(masterGain);
+        oscGain.connect(analyserOsc);
+        analyserOsc.connect(masterGain);
 
         // Mechanical Rattle Resonance Path
         rattleFilter = audioCtx.createBiquadFilter();
@@ -1488,7 +1788,8 @@ Reconstruction formula inside shader:
         rattleGain = audioCtx.createGain();
         rattleGain.gain.value = 0.0;
         rattleFilter.connect(rattleGain);
-        rattleGain.connect(masterGain);
+        rattleGain.connect(analyserRes);
+        analyserRes.connect(masterGain);
 
         updateAudioBuffer();
 
@@ -1512,7 +1813,8 @@ Reconstruction formula inside shader:
 
         noiseSrc.connect(noiseFilter);
         noiseFilter.connect(noiseGain);
-        noiseGain.connect(masterGain);
+        noiseGain.connect(analyserNoise);
+        analyserNoise.connect(masterGain);
         noiseSrc.start();
     }
 
@@ -1582,6 +1884,33 @@ Reconstruction formula inside shader:
             masterGain.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.1);
         }
 
+        // Capture live Web Audio sample data slice for real-time visual history tracking (0.5s continuous rolling window)
+        if (audioCtx && isStarted && !isMuted && analyserOsc) {
+            let tempOsc = new Float32Array(1024);
+            let tempNoise = new Float32Array(1024);
+            let tempRes = new Float32Array(1024);
+            let tempCombined = new Float32Array(1024);
+            
+            analyserOsc.getFloatTimeDomainData(tempOsc);
+            analyserNoise.getFloatTimeDomainData(tempNoise);
+            analyserRes.getFloatTimeDomainData(tempRes);
+            analyserCombined.getFloatTimeDomainData(tempCombined);
+            
+            // At 60 FPS, shifting by 735 samples corresponds perfectly to a continuous ~16.6ms rolling timeline
+            const shiftAmount = 735;
+            historyOsc.copyWithin(0, shiftAmount);
+            historyOsc.set(tempOsc.subarray(0, shiftAmount), historyLength - shiftAmount);
+            
+            historyNoise.copyWithin(0, shiftAmount);
+            historyNoise.set(tempNoise.subarray(0, shiftAmount), historyLength - shiftAmount);
+            
+            historyRes.copyWithin(0, shiftAmount);
+            historyRes.set(tempRes.subarray(0, shiftAmount), historyLength - shiftAmount);
+            
+            historyCombined.copyWithin(0, shiftAmount);
+            historyCombined.set(tempCombined.subarray(0, shiftAmount), historyLength - shiftAmount);
+        }
+
 
         // Render.
         let shutter = deltaAngle * deltaTime * paramShutterMult
@@ -1601,7 +1930,7 @@ Reconstruction formula inside shader:
         gl.clearDepth(1.0)
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-        if (paramDebugMode === 0) {
+        if (!debugUnlocked) {
             gl.viewport(0, 0, canvas.width, canvas.height);
             gl.useProgram(program2)
             
@@ -1620,21 +1949,9 @@ Reconstruction formula inside shader:
             gl.uniform1f(u_shutter, Math.abs(shutter))
             gl.uniform1f(u_rolling, rolling)
             gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
-        }
-        else if (paramDebugMode >= 1 && paramDebugMode <= 3) {
-            gl.viewport(0, 0, canvas.width, canvas.height);
-            gl.useProgram(programBlit)
-            
-            bindIdBuffer(programBlit)
-            gl.activeTexture(gl.TEXTURE0)
-            gl.bindTexture(gl.TEXTURE_2D, prefixTextures[paramDebugMode - 1])
-            gl.uniform1i(u_blitTextureLocation, 0)
-            
-            gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
-        }
-        else if (paramDebugMode === 4) {
-            // [Panel A - Left Half]
-            gl.viewport(0, 0, canvas.width / 2, canvas.height);
+        } else {
+            // [Panel A - Top Left Cartesian Dynamic Motion-Blurred Circle]
+            gl.viewport(0, canvas.height / 2, canvas.width / 2, canvas.height / 2);
             gl.useProgram(program2)
             
             // Re-bind textures for program2
@@ -1643,8 +1960,8 @@ Reconstruction formula inside shader:
             }
             bindTexture(program2, "u_texture", texture, 3)
 
-            // CRITICAL: Pass (canvas.width / 2, canvas.height) into u_canvas_size to keep circle round!
-            gl.uniform2f(gl.getUniformLocation(program2, "u_canvas_size"), canvas.width / 2, canvas.height)
+            // Pass perfect symmetric (canvas.width / 2, canvas.height / 2) to u_canvas_size so no content gets clipped or squished!
+            gl.uniform2f(gl.getUniformLocation(program2, "u_canvas_size"), canvas.width / 2, canvas.height / 2)
             if (shutter > 0) {
                 gl.uniform1f(u_angle, angle)
             } else {
@@ -1654,18 +1971,58 @@ Reconstruction formula inside shader:
             gl.uniform1f(u_rolling, rolling)
             gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
 
-            // [Panel B - Top Right]
-            gl.viewport(canvas.width / 2, canvas.height / 2, canvas.width / 2, canvas.height / 2);
+            // [Panel B - Top Right Polar Precomputed Table Buffer SQUEEZED into 4 parallel bands]
             gl.useProgram(programBlit)
-            
             bindIdBuffer(programBlit)
             gl.activeTexture(gl.TEXTURE0)
+            
+            const wHalf = canvas.width / 2;
+            const hHalf = canvas.height / 2;
+            const bandH = canvas.height / 8; // Each of the 4 bands is h/8 in height
+            
+            // Band 1 (Top): Unrolled Polar Expanded Buffer
+            gl.viewport(wHalf, hHalf + 3 * bandH, wHalf, bandH);
             gl.bindTexture(gl.TEXTURE_2D, offscreenTexture)
             gl.uniform1i(u_blitTextureLocation, 0)
+            gl.drawArrays(gl.TRIANGLES, 0, 3)
             
+            // Band 2: Prefix SAT Buffer 0 (Low)
+            gl.viewport(wHalf, hHalf + 2 * bandH, wHalf, bandH);
+            gl.bindTexture(gl.TEXTURE_2D, prefixTextures[0])
+            gl.uniform1i(u_blitTextureLocation, 0)
+            gl.drawArrays(gl.TRIANGLES, 0, 3)
+            
+            // Band 3: Prefix SAT Buffer 1 (Mid)
+            gl.viewport(wHalf, hHalf + 1 * bandH, wHalf, bandH);
+            gl.bindTexture(gl.TEXTURE_2D, prefixTextures[1])
+            gl.uniform1i(u_blitTextureLocation, 0)
+            gl.drawArrays(gl.TRIANGLES, 0, 3)
+            
+            // Band 4: Prefix SAT Buffer 2 (High)
+            gl.viewport(wHalf, hHalf + 0 * bandH, wHalf, bandH);
+            gl.bindTexture(gl.TEXTURE_2D, prefixTextures[2])
+            gl.uniform1i(u_blitTextureLocation, 0)
+            gl.drawArrays(gl.TRIANGLES, 0, 3)
+
+            // [Panel C - Bottom Left Cartesian Static Circle (No Effect)]
+            gl.viewport(0, 0, canvas.width / 2, canvas.height / 2);
+            gl.useProgram(program2)
+            
+            // Re-bind textures for program2
+            for (let i = 0; i < 3; i++) {
+                bindTexture(program2, "u_prefix" + i, prefixTextures[i], i)
+            }
+            bindTexture(program2, "u_texture", texture, 3)
+
+            // Pass perfect symmetric (canvas.width / 2, canvas.height / 2) to u_canvas_size
+            gl.uniform2f(gl.getUniformLocation(program2, "u_canvas_size"), canvas.width / 2, canvas.height / 2)
+            // SET SHUTTER, ROLLING AND ANGLE TO ZERO FOR THE STATIC OPTICAL VIEW!
+            gl.uniform1f(u_angle, 0.0)
+            gl.uniform1f(u_shutter, 0.0)
+            gl.uniform1f(u_rolling, 0.0)
             gl.drawArrays(gl.TRIANGLES, /*offset=*/0, /*vertexCount=*/3)
 
-            // [Panel C - Bottom Right]: left unrendered by WebGL
+            // [Panel D - Bottom Right Waveform Plot]: left unrendered by WebGL
         }
 
         // Draw 2D Vector Overlay
