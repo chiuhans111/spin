@@ -1227,10 +1227,9 @@
         }
         ctx.font = '9px monospace';
         ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-        ctx.fillText("POLAR EXPANDED IMAGE", w / 2 + 10, 15);
-        ctx.fillText("SAT u_prefix0 (LOW FREQ)", w / 2 + 10, h / 8 + 15);
-        ctx.fillText("SAT u_prefix1 (MID FREQ)", w / 2 + 10, 2 * h / 8 + 15);
-        ctx.fillText("SAT u_prefix2 (HIGH FREQ)", w / 2 + 10, 3 * h / 8 + 15);
+        ctx.fillText("SAT u_prefix0 (BITS 0-5)", w / 2 + 10, h / 8 + 15);
+        ctx.fillText("SAT u_prefix1 (BITS 6-11)", w / 2 + 10, 2 * h / 8 + 15);
+        ctx.fillText("SAT u_prefix2 (BITS 12-17)", w / 2 + 10, 3 * h / 8 + 15);
 
         // 4. Panel D - Real-time 5-Track Laboratory Oscilloscope
         const startX = w / 2;
@@ -1341,13 +1340,6 @@
         ctx.fillStyle = '#00ffcc';
         ctx.fillText("COMBINED MASTER MIX", startX + 10, startY + 4 * h / 10 + 12);
 
-        // HUD Header text labels in the 4 Quadrants
-        ctx.font = '10px monospace';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-        ctx.fillText("PANEL A: ACTIVE CARTESIAN SIMULATION", 15, 20);
-        ctx.fillText("PANEL B: MULTI-BUFFER STACKED INTEGRATION BUFFER", startX + 15, 20);
-        ctx.fillText("PANEL C: STATIC CARTESIAN INPUT (NO BLUR)", 15, startY + 20);
-        ctx.fillText("PANEL D: 5-TRACK LABORATORY OSCILLOSCOPE (0.5s)", startX + 15, startY + 20);
 
         // 5. Symmetrical Inspection Path Rendering
         if (activeInspection) {
